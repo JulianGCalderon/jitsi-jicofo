@@ -39,6 +39,9 @@ import io.ktor.server.routing.options
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
+import io.opentelemetry.api.OpenTelemetry
+import io.opentelemetry.instrumentation.ktor.v3_0.KtorServerTelemetry
+import io.opentelemetry.sdk.autoconfigure.AutoConfiguredOpenTelemetrySdk
 import org.jitsi.health.HealthCheckService
 import org.jitsi.jicofo.ConferenceRequest
 import org.jitsi.jicofo.ConferenceStore
@@ -71,6 +74,10 @@ import org.jxmpp.stringprep.XmppStringprepException
 import java.time.Duration
 import org.jitsi.jicofo.ktor.RestConfig.Companion.config as config
 
+fun getOpenTelemetry(): OpenTelemetry {
+    return AutoConfiguredOpenTelemetrySdk.builder().build().openTelemetrySdk
+}
+
 class Application(
     private val healthChecker: HealthCheckService?,
     private val conferenceIqHandler: ConferenceIqHandler,
@@ -85,6 +92,11 @@ class Application(
     private fun start(): EmbeddedServer<NettyApplicationEngine, NettyApplicationEngine.Configuration> {
         logger.info("Starting ktor on port ${config.port}, host ${config.host}")
         return embeddedServer(Netty, port = config.port, host = config.host) {
+            val openTelemetry = getOpenTelemetry()
+            install(KtorServerTelemetry) {
+                setOpenTelemetry(openTelemetry)
+            }
+
             install(ContentNegotiation) {
                 jackson {}
             }
