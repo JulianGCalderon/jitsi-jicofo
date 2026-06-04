@@ -19,6 +19,7 @@ package org.jitsi.jicofo.xmpp
 
 import org.jitsi.jicofo.FocusManager
 import org.jitsi.jicofo.TaskPools
+import org.jitsi.jicofo.Telemetry
 import org.jitsi.jicofo.auth.AuthenticationAuthority
 import org.jitsi.jicofo.auth.ErrorFactory
 import org.jitsi.jicofo.metrics.JicofoMetricsContainer
@@ -55,6 +56,7 @@ class ConferenceIqHandler(
     private val connection = xmppProvider.xmppConnection
     private var breakoutAddress: DomainBareJid? = null
     private val logger = createLogger()
+    private val tracer = Telemetry.otel.getTracer("org.jitsi.jicofo")
 
     init {
         xmppProvider.addListener(this)
@@ -232,6 +234,31 @@ class ConferenceIqHandler(
             }
         }
 
+        val span = tracer.spanBuilder("xmpp.iq.${iqRequest.type}.${iqRequest.childElementName}")
+            .setAttribute("id", iqRequest.stanzaId)
+            .setAttribute("to", iqRequest.to?.toString() ?: "")
+            .setAttribute("from", iqRequest.from?.toString() ?: "")
+            .setAttribute("lang", iqRequest.language)
+            .setAttribute("namespace", iqRequest.childElementNamespace)
+            .startSpan()
+        iqRequest.error?.let { err ->
+            span.setAttribute("error.type", err.type?.toString() ?: "")
+            span.setAttribute("error.condition", err.condition?.toString() ?: "")
+            span.setAttribute("error.text", err.descriptiveText)
+            span.setAttribute("error.generator", err.errorGenerator)
+        }
+        span.setAttribute("room", iqRequest.room?.toString() ?: "")
+            .setAttribute("ready", iqRequest.isReady?.toString() ?: "")
+            .setAttribute("focusJid", iqRequest.focusJid)
+            .setAttribute("sessionId", iqRequest.sessionId)
+            .setAttribute("machineUID", iqRequest.machineUID)
+            .setAttribute("identity", iqRequest.identity)
+            .setAttribute("vnode", iqRequest.vnode)
+            .setAttribute("token", iqRequest.token)
+        iqRequest.properties.forEach { property ->
+            span.setAttribute("property.${property.name}", property.value)
+        }
+
         // If the IQ comes from mod_client_proxy, parse and substitute the original sender's JID.
         val originalFrom = iqRequest.from
         iqRequest.from = parseJidFromClientProxyJid(XmppConfig.client.clientProxy, originalFrom)
@@ -246,6 +273,7 @@ class ConferenceIqHandler(
             }
         }
 
+        span.end()
         return null
     }
 
