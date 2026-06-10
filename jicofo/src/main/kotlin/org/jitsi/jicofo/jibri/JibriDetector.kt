@@ -17,9 +17,10 @@
  */
 package org.jitsi.jicofo.jibri
 
+import com.fasterxml.jackson.databind.node.JsonNodeFactory
+import com.fasterxml.jackson.databind.node.ObjectNode
 import org.jitsi.jicofo.xmpp.BaseBrewery
 import org.jitsi.jicofo.xmpp.XmppProvider
-import org.jitsi.utils.OrderedJsonObject
 import org.jitsi.utils.concurrent.CustomizableThreadFactory
 import org.jitsi.utils.event.AsyncEventEmitter
 import org.jitsi.utils.logging2.createLogger
@@ -129,21 +130,21 @@ class JibriDetector(
     fun addHandler(eventHandler: EventHandler) = eventEmitter.addHandler(eventHandler)
     fun removeHandler(eventHandler: EventHandler) = eventEmitter.removeHandler(eventHandler)
 
-    val debugState: OrderedJsonObject
-        get() = OrderedJsonObject().also { debugState ->
-            debugState["is_sip"] = isSip
-            debugState["brewery_jid"] = breweryJid.toString()
+    val debugState: ObjectNode
+        get() = JsonNodeFactory.instance.objectNode().also { debugState ->
+            debugState.put("is_sip", isSip)
+            debugState.put("brewery_jid", breweryJid.toString())
             instances.forEach { instance ->
-                val instanceJson = OrderedJsonObject().apply {
-                    this["health_status"] = instance.status.healthStatus?.status.toString()
-                    this["busy_status"] = instance.status.busyStatus?.status.toString()
+                val instanceJson = JsonNodeFactory.instance.objectNode().apply {
+                    put("health_status", instance.status.healthStatus?.status.toString())
+                    put("busy_status", instance.status.busyStatus?.status.toString())
                     jibriInstances[instance.jid]?.let {
-                        this["reports_available"] = it.reportsAvailable
-                        this["last_failed"] = it.lastFailed.toString()
-                        this["last_selected"] = it.lastSelected.toString()
+                        put("reports_available", it.reportsAvailable)
+                        put("last_failed", it.lastFailed.toString())
+                        put("last_selected", it.lastSelected.toString())
                     }
                 }
-                debugState[instance.jid.resourcepart.toString()] = instanceJson
+                debugState.set<ObjectNode>(instance.jid.resourcepart.toString(), instanceJson)
             }
         }
 

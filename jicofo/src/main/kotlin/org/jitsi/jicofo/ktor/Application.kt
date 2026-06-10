@@ -17,6 +17,9 @@
  */
 package org.jitsi.jicofo.ktor
 
+import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.databind.node.JsonNodeFactory
+import com.fasterxml.jackson.databind.node.ObjectNode
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.parseHeaderValue
@@ -58,13 +61,10 @@ import org.jitsi.jicofo.metrics.JicofoMetricsContainer
 import org.jitsi.jicofo.version.CurrentVersionImpl
 import org.jitsi.jicofo.xmpp.ConferenceIqHandler
 import org.jitsi.jicofo.xmpp.XmppCapsStats
-import org.jitsi.utils.OrderedJsonObject
 import org.jitsi.utils.logging2.createLogger
 import org.jitsi.xmpp.extensions.jitsimeet.ConferenceIq
 import org.jivesoftware.smack.packet.IQ
 import org.jivesoftware.smack.packet.StanzaError
-import org.json.simple.JSONArray
-import org.json.simple.JSONObject
 import org.jxmpp.jid.EntityBareJid
 import org.jxmpp.jid.impl.JidCreate
 import org.jxmpp.stringprep.XmppStringprepException
@@ -76,8 +76,8 @@ class Application(
     private val conferenceIqHandler: ConferenceIqHandler,
     private val conferenceStore: ConferenceStore,
     private val loadRedistributor: LoadRedistributor,
-    private val getStatsJson: () -> OrderedJsonObject,
-    private val getDebugState: (full: Boolean, confId: EntityBareJid?) -> OrderedJsonObject
+    private val getStatsJson: () -> ObjectNode,
+    private val getDebugState: (full: Boolean, confId: EntityBareJid?) -> JsonNode
 ) {
     private val logger = createLogger()
     private val server = start()
@@ -189,11 +189,11 @@ class Application(
 
     private fun Route.rtcstats() {
         get("/rtcstats") {
-            val rtcstats = JSONObject()
+            val rtcstats = JsonNodeFactory.instance.objectNode()
             conferenceStore.getAllConferences().forEach { conference ->
                 if (conference.includeInStatistics() && conference.isRtcStatsEnabled) {
                     conference.meetingId?.let { meetingId ->
-                        rtcstats.put(meetingId, conference.rtcstatsState)
+                        rtcstats.set<ObjectNode>(meetingId, conference.rtcstatsState)
                     }
                 }
             }
@@ -250,17 +250,15 @@ class Application(
                     )
                 }
                 get("conferences") {
-                    val conferencesJson = JSONArray().apply {
-                        conferenceStore.getAllConferences().forEach {
-                            add(it.roomName.toString())
-                        }
+                    val conferencesJson = JsonNodeFactory.instance.arrayNode().apply {
+                        conferenceStore.getAllConferences().forEach { add(it.roomName.toString()) }
                     }
                     call.respondJson(conferencesJson)
                 }
                 get("conferences-full") {
-                    val conferencesJson = JSONObject().apply {
+                    val conferencesJson = JsonNodeFactory.instance.objectNode().apply {
                         conferenceStore.getAllConferences().forEach {
-                            put(it.roomName.toString(), it.debugState)
+                            set<ObjectNode>(it.roomName.toString(), it.debugState)
                         }
                     }
                     call.respondJson(conferencesJson)
@@ -333,14 +331,8 @@ class Application(
     }
 }
 
-private suspend fun RoutingCall.respondJson(json: JSONArray) {
-    respondText(ContentType.Application.Json, HttpStatusCode.OK) { json.toJSONString() }
-}
-private suspend fun RoutingCall.respondJson(json: JSONObject) {
-    respondText(ContentType.Application.Json, HttpStatusCode.OK) { json.toJSONString() }
-}
-private suspend fun RoutingCall.respondJson(json: OrderedJsonObject) {
-    respondText(ContentType.Application.Json, HttpStatusCode.OK) { json.toJSONString() }
+private suspend fun RoutingCall.respondJson(json: JsonNode) {
+    respondText(ContentType.Application.Json, HttpStatusCode.OK) { json.toString() }
 }
 
 private fun translateException(block: () -> MoveResult): MoveResult {

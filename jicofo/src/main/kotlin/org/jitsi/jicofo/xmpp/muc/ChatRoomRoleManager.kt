@@ -17,10 +17,11 @@
  */
 package org.jitsi.jicofo.xmpp.muc
 
+import com.fasterxml.jackson.databind.node.JsonNodeFactory
+import com.fasterxml.jackson.databind.node.ObjectNode
 import org.jitsi.jicofo.TaskPools
 import org.jitsi.jicofo.auth.AuthenticationAuthority
 import org.jitsi.jicofo.auth.AuthenticationListener
-import org.jitsi.utils.OrderedJsonObject
 import org.jitsi.utils.logging2.createLogger
 import org.jitsi.utils.queue.PacketQueue
 
@@ -40,7 +41,7 @@ sealed class ChatRoomRoleManager(
     open fun stop() {}
     open fun grantOwnership() {}
 
-    open val debugState: OrderedJsonObject = OrderedJsonObject()
+    open val debugState: ObjectNode = JsonNodeFactory.instance.objectNode()
 
     protected val queue = PacketQueue<Runnable>(
         Integer.MAX_VALUE,
@@ -105,8 +106,8 @@ class AutoOwnerRoleManager(chatRoom: ChatRoom) : ChatRoomRoleManager(chatRoom) {
         }
     }
 
-    override val debugState
-        get() = OrderedJsonObject().apply {
+    override val debugState: ObjectNode
+        get() = JsonNodeFactory.instance.objectNode().apply {
             put("class", this@AutoOwnerRoleManager.javaClass.simpleName)
             put("owner", owner?.jid?.toString() ?: "null")
         }
@@ -164,7 +165,7 @@ class AuthenticationRoleManager(
 
     override fun stop() = authenticationAuthority.removeAuthenticationListener(authenticationListener)
 
-    override val debugState = OrderedJsonObject().apply {
+    override val debugState: ObjectNode = JsonNodeFactory.instance.objectNode().apply {
         put("class", this@AuthenticationRoleManager.javaClass.simpleName)
     }
 }

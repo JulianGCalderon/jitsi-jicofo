@@ -17,8 +17,9 @@
  */
 package org.jitsi.jicofo.conference
 
+import com.fasterxml.jackson.databind.node.JsonNodeFactory
+import com.fasterxml.jackson.databind.node.ObjectNode
 import org.jitsi.jicofo.conference.source.ConferenceSourceMap
-import org.jitsi.utils.OrderedJsonObject
 
 /** An action -- add or remove. */
 enum class AddOrRemove {
@@ -31,9 +32,9 @@ data class SourcesToAddOrRemove(
     val action: AddOrRemove,
     val sources: ConferenceSourceMap
 ) {
-    val debugState: OrderedJsonObject
-        get() = OrderedJsonObject().apply {
+    val debugState: ObjectNode
+        get() = JsonNodeFactory.instance.objectNode().apply {
             put("action", action.toString())
-            put("sources", sources.toJson())
+            set<ObjectNode>("sources", sources.toJson())
         }
 }

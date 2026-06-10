@@ -17,7 +17,8 @@
  */
 package org.jitsi.jicofo.conference
 
-import org.jitsi.utils.OrderedJsonObject
+import com.fasterxml.jackson.databind.node.JsonNodeFactory
+import com.fasterxml.jackson.databind.node.ObjectNode
 import org.jitsi.utils.logging2.createLogger
 import java.lang.Boolean.parseBoolean
 
@@ -38,11 +39,11 @@ class JitsiMeetConfig(properties: Map<String, String>) {
         }
     }
 
-    val debugState: OrderedJsonObject
-        get() = OrderedJsonObject().apply {
+    val debugState: ObjectNode
+        get() = JsonNodeFactory.instance.objectNode().apply {
             put("rtcstatsEnabled", rtcStatsEnabled)
-            put("startAudioMuted", startAudioMuted ?: "null")
-            put("startVideoMuted", startVideoMuted ?: "null")
+            if (startAudioMuted != null) put("startAudioMuted", startAudioMuted) else putNull("startAudioMuted")
+            if (startVideoMuted != null) put("startVideoMuted", startVideoMuted) else putNull("startVideoMuted")
         }
 
     // Needed for createLogger() to work.

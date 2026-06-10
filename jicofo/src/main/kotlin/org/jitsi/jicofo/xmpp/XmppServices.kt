@@ -17,6 +17,8 @@
  */
 package org.jitsi.jicofo.xmpp
 
+import com.fasterxml.jackson.databind.node.JsonNodeFactory
+import com.fasterxml.jackson.databind.node.ObjectNode
 import org.jitsi.jicofo.ConferenceStore
 import org.jitsi.jicofo.FocusManager
 import org.jitsi.jicofo.auth.AbstractAuthAuthority
@@ -24,7 +26,6 @@ import org.jitsi.jicofo.jigasi.JigasiConfig
 import org.jitsi.jicofo.jigasi.JigasiDetector
 import org.jitsi.jicofo.metrics.JicofoMetricsContainer
 import org.jitsi.jicofo.xmpp.jingle.JingleIqRequestHandler
-import org.jitsi.utils.OrderedJsonObject
 import org.jitsi.utils.logging2.createLogger
 
 class XmppServices(
@@ -92,8 +93,8 @@ class XmppServices(
     } else {
         null
     }
-    val jigasiStats: OrderedJsonObject
-        get() = jigasiIqHandler?.statsJson ?: OrderedJsonObject()
+    val jigasiStats: ObjectNode
+        get() = jigasiIqHandler?.statsJson ?: JsonNodeFactory.instance.objectNode()
 
     val avModerationHandler = AvModerationHandler(clientConnection, conferenceStore)
     val roomMetadataHandler = RoomMetadataHandler(clientConnection, conferenceStore)

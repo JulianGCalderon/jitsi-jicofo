@@ -17,14 +17,14 @@
  */
 package org.jitsi.jicofo.bridge
 
+import com.fasterxml.jackson.databind.node.JsonNodeFactory
+import com.fasterxml.jackson.databind.node.ObjectNode
 import org.jitsi.jicofo.OctoConfig
 import org.jitsi.jicofo.metrics.JicofoMetricsContainer
-import org.jitsi.utils.OrderedJsonObject
 import org.jitsi.utils.concurrent.CustomizableThreadFactory
 import org.jitsi.utils.event.AsyncEventEmitter
 import org.jitsi.utils.logging2.createLogger
 import org.jitsi.xmpp.extensions.colibri.ColibriStatsExtension
-import org.json.simple.JSONObject
 import org.jxmpp.jid.Jid
 import java.time.Clock
 import java.util.concurrent.ConcurrentHashMap
@@ -221,25 +221,28 @@ class BridgeSelector @JvmOverloads constructor(
         )
     }
 
-    val stats: JSONObject
+    val stats: ObjectNode
         @Synchronized
-        get() = JSONObject().apply {
+        get() = JsonNodeFactory.instance.objectNode().apply {
             // We want to avoid exposing unnecessary hierarchy levels in the stats,
             // so we'll merge stats from different "child" objects here.
-            this["bridge_count"] = bridgeCount.get()
-            this["operational_bridge_count"] = operationalBridgeCountMetric.get()
-            this["in_shutdown_bridge_count"] = inShutdownBridgeCountMetric.get()
-            this["lost_bridges"] = lostBridges.get()
-            this["bridge_version_count"] = bridgeVersionCount.get()
+            put("bridge_count", bridgeCount.get())
+            put("operational_bridge_count", operationalBridgeCountMetric.get())
+            put("in_shutdown_bridge_count", inShutdownBridgeCountMetric.get())
+            put("lost_bridges", lostBridges.get())
+            put("bridge_version_count", bridgeVersionCount.get())
         }
 
-    val debugState: OrderedJsonObject
+    val debugState: ObjectNode
         @Synchronized
-        get() = OrderedJsonObject().apply {
-            this["strategy"] = bridgeSelectionStrategy.javaClass.simpleName
-            this["bridge"] = OrderedJsonObject().apply {
-                bridges.values.forEach { put(it.jid.toString(), it.debugState) }
-            }
+        get() = JsonNodeFactory.instance.objectNode().apply {
+            put("strategy", bridgeSelectionStrategy.javaClass.simpleName)
+            set<ObjectNode>(
+                "bridge",
+                JsonNodeFactory.instance.objectNode().apply {
+                    bridges.values.forEach { set<ObjectNode>(it.jid.toString(), it.debugState) }
+                }
+            )
         }
 
     fun updateMetrics() {

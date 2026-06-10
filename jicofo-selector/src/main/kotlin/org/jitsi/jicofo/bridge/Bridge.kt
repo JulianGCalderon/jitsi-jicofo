@@ -17,8 +17,9 @@
  */
 package org.jitsi.jicofo.bridge
 
+import com.fasterxml.jackson.databind.node.JsonNodeFactory
+import com.fasterxml.jackson.databind.node.ObjectNode
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings
-import org.jitsi.utils.OrderedJsonObject
 import org.jitsi.utils.logging2.Logger
 import org.jitsi.utils.logging2.LoggerImpl
 import org.jitsi.utils.stats.RateTracker
@@ -334,23 +335,23 @@ class Bridge @JvmOverloads internal constructor(
     val isOverloaded: Boolean
         get() = correctedStress >= config.stressThreshold
 
-    val debugState: OrderedJsonObject
-        get() = OrderedJsonObject().apply {
-            this["corrected-stress"] = correctedStress
-            this["drain"] = isDraining
-            this["endpoints"] = endpoints.get()
-            this["endpoint-restart-requests"] = endpointRestartRequestRate.getAccumulatedCount()
-            this["failing-ice"] = failingIce
-            this["graceful-shutdown"] = isInGracefulShutdown
-            this["healthy"] = isHealthy
-            this["operational"] = isOperational
-            this["overloaded"] = isOverloaded
-            this["region"] = region.toString()
-            this["relay-id"] = relayId.toString()
-            this["release"] = releaseId.toString()
-            this["shutting-down"] = isShuttingDown
-            this["stress"] = lastReportedStressLevel
-            this["version"] = version.toString()
+    val debugState: ObjectNode
+        get() = JsonNodeFactory.instance.objectNode().apply {
+            put("corrected-stress", correctedStress)
+            put("drain", isDraining)
+            put("endpoints", endpoints.get())
+            put("endpoint-restart-requests", endpointRestartRequestRate.getAccumulatedCount())
+            put("failing-ice", failingIce)
+            put("graceful-shutdown", isInGracefulShutdown)
+            put("healthy", isHealthy)
+            put("operational", isOperational)
+            put("overloaded", isOverloaded)
+            put("region", region.toString())
+            put("relay-id", relayId.toString())
+            put("release", releaseId.toString())
+            put("shutting-down", isShuttingDown)
+            put("stress", lastReportedStressLevel)
+            put("version", version.toString())
         }
 
     companion object {

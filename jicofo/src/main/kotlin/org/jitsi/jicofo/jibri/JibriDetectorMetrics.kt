@@ -17,8 +17,9 @@
  */
 package org.jitsi.jicofo.jibri
 
+import com.fasterxml.jackson.databind.node.JsonNodeFactory
+import com.fasterxml.jackson.databind.node.ObjectNode
 import org.jitsi.jicofo.metrics.JicofoMetricsContainer
-import org.jitsi.utils.OrderedJsonObject
 
 class JibriDetectorMetrics {
     companion object {
@@ -58,15 +59,21 @@ class JibriDetectorMetrics {
             }
         }
 
-        fun appendStats(o: OrderedJsonObject) {
-            o["jibri_detector"] = OrderedJsonObject().apply {
-                put("count", jibriInstanceCount.get())
-                put("available", jibriInstanceAvailableCount.get())
-            }
-            o["sip_jibri_detector"] = OrderedJsonObject().apply {
-                put("count", sipJibriInstanceCount.get())
-                put("available", sipJibriInstanceAvailableCount.get())
-            }
+        fun appendStats(o: ObjectNode) {
+            o.set<ObjectNode>(
+                "jibri_detector",
+                JsonNodeFactory.instance.objectNode().apply {
+                    put("count", jibriInstanceCount.get())
+                    put("available", jibriInstanceAvailableCount.get())
+                }
+            )
+            o.set<ObjectNode>(
+                "sip_jibri_detector",
+                JsonNodeFactory.instance.objectNode().apply {
+                    put("count", sipJibriInstanceCount.get())
+                    put("available", sipJibriInstanceAvailableCount.get())
+                }
+            )
         }
     }
 }

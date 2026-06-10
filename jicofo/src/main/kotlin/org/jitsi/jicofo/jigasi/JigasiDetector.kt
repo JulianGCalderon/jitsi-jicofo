@@ -17,15 +17,15 @@
  */
 package org.jitsi.jicofo.jigasi
 
+import com.fasterxml.jackson.databind.node.JsonNodeFactory
+import com.fasterxml.jackson.databind.node.ObjectNode
 import org.jitsi.jicofo.JicofoConfig
 import org.jitsi.jicofo.bridge.BridgeConfig
 import org.jitsi.jicofo.metrics.JicofoMetricsContainer
 import org.jitsi.jicofo.xmpp.BaseBrewery
 import org.jitsi.jicofo.xmpp.XmppProvider
-import org.jitsi.utils.OrderedJsonObject
 import org.jitsi.utils.logging2.createLogger
 import org.jitsi.xmpp.extensions.colibri.ColibriStatsExtension
-import org.json.simple.JSONObject
 import org.jxmpp.jid.EntityBareJid
 import org.jxmpp.jid.EntityFullJid
 import org.jxmpp.jid.Jid
@@ -71,25 +71,25 @@ open class JigasiDetector(
     fun selectSipJigasi(exclude: List<Jid> = emptyList(), preferredRegions: Collection<String> = emptySet()): Jid? =
         selectJigasi(instances, exclude, preferredRegions, localRegion, transcriber = false)
 
-    val stats: JSONObject
-        get() = JSONObject().apply {
-            this["sip_count"] = sipCount.get()
-            this["sip_in_graceful_shutdown_count"] = sipInGracefulShutdownCount.get()
-            this["transcriber_count"] = transcriberCount.get()
+    val stats: ObjectNode
+        get() = JsonNodeFactory.instance.objectNode().apply {
+            put("sip_count", sipCount.get())
+            put("sip_in_graceful_shutdown_count", sipInGracefulShutdownCount.get())
+            put("transcriber_count", transcriberCount.get())
         }
 
-    val debugState: OrderedJsonObject
-        get() = OrderedJsonObject().also { debugState ->
-            debugState["brewery_jid"] = breweryJid.toString()
+    val debugState: ObjectNode
+        get() = JsonNodeFactory.instance.objectNode().also { debugState ->
+            debugState.put("brewery_jid", breweryJid.toString())
             instances.forEach { instance ->
-                val instanceJson = OrderedJsonObject().apply {
-                    this["supports_sip"] = instance.supportsSip()
-                    this["supports_transcription"] = instance.supportsTranscription()
-                    this["is_in_graceful_shutdown"] = instance.isInGracefulShutdown()
-                    this["participants"] = instance.getParticipantCount()
-                    this["region"] = instance.getRegion() ?: "null"
+                val instanceJson = JsonNodeFactory.instance.objectNode().apply {
+                    put("supports_sip", instance.supportsSip())
+                    put("supports_transcription", instance.supportsTranscription())
+                    put("is_in_graceful_shutdown", instance.isInGracefulShutdown())
+                    put("participants", instance.getParticipantCount())
+                    put("region", instance.getRegion() ?: "null")
                 }
-                debugState[instance.jid.resourceOrEmpty.toString()] = instanceJson
+                debugState.set<ObjectNode>(instance.jid.resourceOrEmpty.toString(), instanceJson)
             }
         }
 

@@ -17,13 +17,14 @@
  */
 package org.jitsi.jicofo.xmpp
 
+import com.fasterxml.jackson.databind.node.JsonNodeFactory
+import com.fasterxml.jackson.databind.node.ObjectNode
 import org.jitsi.jicofo.FocusManager
 import org.jitsi.jicofo.TaskPools
 import org.jitsi.jicofo.auth.AuthenticationAuthority
 import org.jitsi.jicofo.auth.ErrorFactory
 import org.jitsi.jicofo.metrics.JicofoMetricsContainer
 import org.jitsi.jwt.JitsiToken
-import org.jitsi.utils.OrderedJsonObject
 import org.jitsi.utils.logging2.createLogger
 import org.jitsi.xmpp.extensions.jitsimeet.ConferenceIq
 import org.jivesoftware.smack.iqrequest.AbstractIqRequestHandler
@@ -62,12 +63,12 @@ class ConferenceIqHandler(
         componentsChanged(xmppProvider.components)
     }
 
-    val debugState: OrderedJsonObject
-        get() = OrderedJsonObject().apply {
-            this["breakout_address"] = breakoutAddress.toString()
-            this["focus_auth_jid"] = focusAuthJid
-            this["jigasi_enabled"] = jigasiEnabled
-            this["auth_authority"] = authAuthority?.javaClass?.simpleName ?: "null"
+    val debugState: ObjectNode
+        get() = JsonNodeFactory.instance.objectNode().apply {
+            put("breakout_address", breakoutAddress.toString())
+            put("focus_auth_jid", focusAuthJid)
+            put("jigasi_enabled", jigasiEnabled)
+            put("auth_authority", authAuthority?.javaClass?.simpleName ?: "null")
         }
 
     /** Handle a [ConferenceIq] synchronously and return a response. */

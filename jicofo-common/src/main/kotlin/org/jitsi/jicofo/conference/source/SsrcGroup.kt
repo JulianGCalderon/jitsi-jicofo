@@ -15,11 +15,11 @@
  */
 package org.jitsi.jicofo.conference.source
 
+import com.fasterxml.jackson.databind.node.JsonNodeFactory
+import com.fasterxml.jackson.databind.node.ObjectNode
 import org.jitsi.utils.MediaType
-import org.jitsi.utils.OrderedJsonObject
 import org.jitsi.xmpp.extensions.colibri.SourcePacketExtension
 import org.jitsi.xmpp.extensions.jingle.SourceGroupPacketExtension
-import org.json.simple.JSONArray
 import java.lang.IllegalArgumentException
 import kotlin.jvm.Throws
 
@@ -81,9 +81,9 @@ data class SsrcGroup(
     }
 
     /** Expanded JSON format used for debugging. */
-    fun toJson() = OrderedJsonObject().apply {
+    fun toJson(): ObjectNode = JsonNodeFactory.instance.objectNode().apply {
         put("semantics", semantics.toString())
         put("media_type", mediaType.toString())
-        put("ssrcs", JSONArray().apply { ssrcs.forEach { add(it) } })
+        set<ObjectNode>("ssrcs", JsonNodeFactory.instance.arrayNode().apply { ssrcs.forEach { add(it) } })
     }
 }

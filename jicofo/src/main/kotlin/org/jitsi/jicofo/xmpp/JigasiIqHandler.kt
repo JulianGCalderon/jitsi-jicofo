@@ -17,6 +17,8 @@
  */
 package org.jitsi.jicofo.xmpp
 
+import com.fasterxml.jackson.databind.node.JsonNodeFactory
+import com.fasterxml.jackson.databind.node.ObjectNode
 import org.jitsi.jicofo.ConferenceStore
 import org.jitsi.jicofo.TaskPools
 import org.jitsi.jicofo.conference.JitsiMeetConference
@@ -24,7 +26,6 @@ import org.jitsi.jicofo.jigasi.JigasiDetector
 import org.jitsi.jicofo.metrics.JicofoMetricsContainer
 import org.jitsi.jicofo.xmpp.IqProcessingResult.AcceptedWithNoResponse
 import org.jitsi.jicofo.xmpp.IqProcessingResult.RejectedWithError
-import org.jitsi.utils.OrderedJsonObject
 import org.jitsi.utils.logging2.createLogger
 import org.jitsi.xmpp.extensions.rayo.DialIq
 import org.jivesoftware.smack.AbstractXMPPConnection
@@ -51,7 +52,7 @@ class JigasiIqHandler(
     private val stanzaIdSource = stanzaIdSourceFactory.constructStanzaIdSource()
 
     private val stats = Stats()
-    val statsJson: OrderedJsonObject
+    val statsJson: ObjectNode
         get() = stats.toJson()
 
     override fun handleRequest(request: IqRequest<DialIq>): IqProcessingResult {
@@ -216,8 +217,8 @@ class JigasiIqHandler(
         fun allInstancesFailed() = requestsFailedAllInstancesFailed.incrementAndGet()
 
         fun toJson() = statsJson().apply {
-            this["requests_failed_no_instance"] = requestsFailedNoInstanceAvailable.get()
-            this["requests_failed_xmpp_not_connected"] = requestsFailedXmppNotConnected.get()
+            put("requests_failed_no_instance", requestsFailedNoInstanceAvailable.get())
+            put("requests_failed_xmpp_not_connected", requestsFailedXmppNotConnected.get())
         }
 
         companion object {
@@ -243,7 +244,7 @@ class JigasiIqHandler(
                 "Timeouts for requests sent to jigasi instances."
             )
 
-            fun statsJson() = OrderedJsonObject().apply {
+            fun statsJson() = JsonNodeFactory.instance.objectNode().apply {
                 put("rejected_requests", rejectedRequests.get())
                 put("accepted_requests", acceptedRequests.get())
                 put("retries", retries.get())

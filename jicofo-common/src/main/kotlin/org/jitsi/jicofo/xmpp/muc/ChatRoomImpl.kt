@@ -17,6 +17,10 @@
  */
 package org.jitsi.jicofo.xmpp.muc
 
+import com.fasterxml.jackson.databind.node.ArrayNode
+import com.fasterxml.jackson.databind.node.JsonNodeFactory
+import com.fasterxml.jackson.databind.node.ObjectNode
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings
 import org.jitsi.jicofo.JicofoConfig
 import org.jitsi.jicofo.MediaType
@@ -27,7 +31,6 @@ import org.jitsi.jicofo.xmpp.XmppProvider
 import org.jitsi.jicofo.xmpp.muc.MemberRole.Companion.fromSmack
 import org.jitsi.jicofo.xmpp.sendIqAndGetResponse
 import org.jitsi.jicofo.xmpp.tryToSendStanza
-import org.jitsi.utils.OrderedJsonObject
 import org.jitsi.utils.event.EventEmitter
 import org.jitsi.utils.event.SyncEventEmitter
 import org.jitsi.utils.logging2.createLogger
@@ -61,6 +64,8 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.logging.Level
+
+private val jsonMapper = jacksonObjectMapper()
 
 @SuppressFBWarnings(
     value = ["JLM_JSR166_UTILCONCURRENT_MONITORENTER"],
@@ -247,28 +252,31 @@ class ChatRoomImpl(
         eventEmitter.fireEvent { numVideoSendersChanged(newValue) }
     }
 
-    override val debugState: OrderedJsonObject
-        get() = OrderedJsonObject().apply {
-            this["room_jid"] = roomJid.toString()
-            this["my_occupant_jid"] = myOccupantJid.toString()
-            val membersJson = OrderedJsonObject()
+    override val debugState: ObjectNode
+        get() = JsonNodeFactory.instance.objectNode().apply {
+            put("room_jid", roomJid.toString())
+            put("my_occupant_jid", myOccupantJid.toString())
+            val membersJson = JsonNodeFactory.instance.objectNode()
             membersMap.values.forEach {
-                membersJson[it.name] = it.debugState
+                membersJson.set<ObjectNode>(it.name, it.debugState)
             }
-            this["members"] = membersJson
-            this["audio_senders_count"] = audioSendersCount
-            this["video_senders_count"] = videoSendersCount
-            this["lobby_enabled"] = lobbyEnabled
-            this["participants_soft_limit"] = participantsSoftLimit ?: -1
+            set<ObjectNode>("members", membersJson)
+            put("audio_senders_count", audioSendersCount)
+            put("video_senders_count", videoSendersCount)
+            put("lobby_enabled", lobbyEnabled)
+            put("participants_soft_limit", participantsSoftLimit ?: -1)
             participants?.let {
-                this["participants"] = it
+                set<ArrayNode>("participants", jsonMapper.valueToTree(it))
             }
-            this["moderators"] = moderators
-            this["visitors_enabled"] = visitorsEnabled?.toString() ?: "null"
-            this["visitors_live"] = visitorsLive
-            this["av_moderation"] = OrderedJsonObject().apply {
-                avModerationByMediaType.forEach { (k, v) -> this[k.toString()] = v.debugState }
-            }
+            set<ArrayNode>("moderators", jsonMapper.valueToTree(moderators))
+            put("visitors_enabled", visitorsEnabled?.toString() ?: "null")
+            put("visitors_live", visitorsLive)
+            set<ObjectNode>(
+                "av_moderation",
+                JsonNodeFactory.instance.objectNode().apply {
+                    avModerationByMediaType.forEach { (k, v) -> set<ObjectNode>(k.toString(), v.debugState) }
+                }
+            )
         }
 
     override fun addListener(listener: ChatRoomListener) = eventEmitter.addHandler(listener)
@@ -740,10 +748,10 @@ class ChatRoomImpl(
             logger.info("Setting whitelist for $mediaType: $newValue")
         }
 
-        val debugState: OrderedJsonObject
-            get() = OrderedJsonObject().apply {
-                this["enabled"] = enabled
-                this["whitelist"] = whitelist
+        val debugState: ObjectNode
+            get() = JsonNodeFactory.instance.objectNode().apply {
+                put("enabled", enabled)
+                set<ArrayNode>("whitelist", jsonMapper.valueToTree(whitelist))
             }
 
         fun isAllowedToUnmute(jid: Jid) = !enabled || whitelist.contains(jid.toString())

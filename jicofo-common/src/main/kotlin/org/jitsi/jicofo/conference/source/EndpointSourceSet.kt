@@ -15,15 +15,15 @@
  */
 package org.jitsi.jicofo.conference.source
 
+import com.fasterxml.jackson.databind.node.JsonNodeFactory
+import com.fasterxml.jackson.databind.node.ObjectNode
 import org.jitsi.utils.MediaType
 import org.jitsi.utils.MediaType.AUDIO
 import org.jitsi.utils.MediaType.VIDEO
-import org.jitsi.utils.OrderedJsonObject
 import org.jitsi.xmpp.extensions.colibri.SourcePacketExtension
 import org.jitsi.xmpp.extensions.jingle.ContentPacketExtension
 import org.jitsi.xmpp.extensions.jingle.RtpDescriptionPacketExtension
 import org.jitsi.xmpp.extensions.jingle.SourceGroupPacketExtension
-import org.json.simple.JSONArray
 import java.lang.IllegalArgumentException
 import kotlin.jvm.Throws
 
@@ -138,16 +138,16 @@ data class EndpointSourceSet(
     }
 
     /** Expanded JSON format used for debugging. */
-    fun toJson() = OrderedJsonObject().apply {
-        put(
+    fun toJson(): ObjectNode = JsonNodeFactory.instance.objectNode().apply {
+        set<ObjectNode>(
             "sources",
-            JSONArray().apply {
+            JsonNodeFactory.instance.arrayNode().apply {
                 sources.forEach { add(it.toJson()) }
             }
         )
-        put(
+        set<ObjectNode>(
             "groups",
-            JSONArray().apply {
+            JsonNodeFactory.instance.arrayNode().apply {
                 ssrcGroups.forEach { add(it.toJson()) }
             }
         )
