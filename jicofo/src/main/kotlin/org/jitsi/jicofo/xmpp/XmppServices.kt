@@ -26,7 +26,6 @@ import org.jitsi.jicofo.metrics.JicofoMetricsContainer
 import org.jitsi.jicofo.xmpp.jingle.JingleIqRequestHandler
 import org.jitsi.utils.OrderedJsonObject
 import org.jitsi.utils.logging2.createLogger
-import org.jivesoftware.smack.sm.predicates.ForEveryStanza
 
 class XmppServices(
     conferenceStore: ConferenceStore,
@@ -63,13 +62,6 @@ class XmppServices(
     }
 
     fun getXmppVisitorConnectionByName(name: String) = visitorConnections.find { it.config.name == name }
-
-    private val stanzaTracer = StanzaTracer().apply {
-        clientConnection.xmppConnection.addSyncStanzaListener(
-            this,
-            ForEveryStanza.INSTANCE
-        )
-    }
 
     val jigasiDetector = JigasiConfig.config.breweryJid?.let { breweryJid ->
         JigasiDetector(
