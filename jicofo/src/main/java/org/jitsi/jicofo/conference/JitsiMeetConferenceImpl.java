@@ -802,7 +802,7 @@ public class JitsiMeetConferenceImpl
                 .setAttribute("member.isJigasi", chatRoomMember.isJigasi())
                 .setAttribute("member.isTranscriber", chatRoomMember.isTranscriber())
                 .startSpan();
-        try (var scope = span.makeCurrent())
+        try
         {
         // Detect a race condition in which this thread runs before EntityCapsManager's async StanzaListener that
         // populates the JID to NodeVerHash cache. If that's the case calling getFeatures() would result in an
@@ -924,7 +924,7 @@ public class JitsiMeetConferenceImpl
             .setAttribute("member.isJigasi", chatRoomMember.isJigasi())
             .setAttribute("member.isTranscriber", chatRoomMember.isTranscriber())
             .startSpan();
-        try (var scope = span.makeCurrent())
+        try
         {
         synchronized (participantLock)
         {

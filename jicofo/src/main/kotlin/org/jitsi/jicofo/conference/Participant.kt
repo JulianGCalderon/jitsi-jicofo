@@ -427,31 +427,29 @@ open class Participant @JvmOverloads constructor(
                 span.setAttribute("$index.xml", content.toXML().toString())
             }
             try {
-                span.makeCurrent().use { scope ->
-                    if (this@Participant.jingleSession != null && this@Participant.jingleSession != jingleSession) {
-                        logger.error("Rejecting $action for a session that has been replaced.")
-                        return StanzaError.from(StanzaError.Condition.gone, "session has been replaced").build()
-                    }
+                if (this@Participant.jingleSession != null && this@Participant.jingleSession != jingleSession) {
+                    logger.error("Rejecting $action for a session that has been replaced.")
+                    return StanzaError.from(StanzaError.Condition.gone, "session has been replaced").build()
+                }
 
-                    logger.info("Received $action")
-                    val sourcesAdvertised = fromJingle(contents)
-                    if (!sourcesAdvertised.isEmpty() && this@Participant.chatMember.role == MemberRole.VISITOR) {
-                        return StanzaError.from(StanzaError.Condition.forbidden, "sources not allowed for visitors")
-                            .build()
-                    }
-                    val initialLastN: InitialLastN? =
-                        contents.find { it.name == "video" }?.getChildExtension(InitialLastN::class.java)
+                logger.info("Received $action")
+                val sourcesAdvertised = fromJingle(contents)
+                if (!sourcesAdvertised.isEmpty() && this@Participant.chatMember.role == MemberRole.VISITOR) {
+                    return StanzaError.from(StanzaError.Condition.forbidden, "sources not allowed for visitors")
+                        .build()
+                }
+                val initialLastN: InitialLastN? =
+                    contents.find { it.name == "video" }?.getChildExtension(InitialLastN::class.java)
 
-                    try {
-                        conference.acceptSession(
-                            this@Participant,
-                            sourcesAdvertised,
-                            contents.getTransport(),
-                            initialLastN
-                        )
-                    } catch (e: ValidationFailedException) {
-                        return StanzaError.from(StanzaError.Condition.bad_request, e.message).build()
-                    }
+                try {
+                    conference.acceptSession(
+                        this@Participant,
+                        sourcesAdvertised,
+                        contents.getTransport(),
+                        initialLastN
+                    )
+                } catch (e: ValidationFailedException) {
+                    return StanzaError.from(StanzaError.Condition.bad_request, e.message).build()
                 }
             } finally {
                 span.end()
