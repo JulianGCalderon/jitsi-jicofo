@@ -162,7 +162,8 @@ class ConferenceIqHandler(
                 val preferredInMainRoom = conference.chatRoom?.isPreferredInMainRoom(userId, groupId) == true
 
                 logger.debug {
-                    "allowedInMainRoom=$allowedInMainRoom, preferredInMainRoom=$preferredInMainRoom, visitorsLive=$visitorsLive"
+                    "allowedInMainRoom=$allowedInMainRoom, " + "preferredInMainRoom=$preferredInMainRoom, " +
+                        "visitorsLive=$visitorsLive"
                 }
                 if (visitorsConfig.enableLiveRoom && !allowedInMainRoom && !visitorsLive && visitorSupported) {
                     logger.debug("Sending to queue")
