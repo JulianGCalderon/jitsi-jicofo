@@ -17,7 +17,11 @@
  */
 package org.jitsi.jicofo.conference;
 
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Context;
 import kotlin.*;
+import org.apache.commons.lang3.StringUtils;
 import org.jetbrains.annotations.*;
 import org.jitsi.jicofo.*;
 import org.jitsi.jicofo.MediaType;
@@ -79,6 +83,8 @@ import static org.jitsi.jicofo.xmpp.MuteIqHandlerKt.createMuteIq;
 public class JitsiMeetConferenceImpl
     implements JitsiMeetConference, XmppProvider.Listener
 {
+
+    private final Tracer tracer = Telemetry.INSTANCE.getOtel().getTracer("org.jitsi.jicofo");
 
     /**
      * Status used by participants when they are switching from a room to a breakout room.
@@ -783,6 +789,21 @@ public class JitsiMeetConferenceImpl
      */
     private void onMemberJoined(@NotNull ChatRoomMember chatRoomMember)
     {
+        Span span = tracer.spanBuilder("member-join")
+                .setAttribute("member.name", chatRoomMember.getName())
+                .setAttribute("member.id", Objects.toString(chatRoomMember.getJid()))
+                .setAttribute("member.role", chatRoomMember.getRole().toString())
+                .setAttribute("member.region", StringUtils.defaultString(chatRoomMember.getRegion()))
+                .setAttribute("room.id", chatRoomMember.getChatRoom().getRoomJid().toString())
+                .setAttribute("member.stats-id", Objects.toString(chatRoomMember.getStatsId()))
+                .setAttribute("member.audioMuted", chatRoomMember.isAudioMuted())
+                .setAttribute("member.videoMuted", chatRoomMember.isVideoMuted())
+                .setAttribute("member.isJibri", chatRoomMember.isJibri())
+                .setAttribute("member.isJigasi", chatRoomMember.isJigasi())
+                .setAttribute("member.isTranscriber", chatRoomMember.isTranscriber())
+                .startSpan();
+        try (var scope = span.makeCurrent())
+        {
         // Detect a race condition in which this thread runs before EntityCapsManager's async StanzaListener that
         // populates the JID to NodeVerHash cache. If that's the case calling getFeatures() would result in an
         // unnecessary disco#info request being sent. That's not an unrecoverable problem, but just yielding should
@@ -856,6 +877,11 @@ public class JitsiMeetConferenceImpl
                 inviteChatMember(chatRoomMember);
             }
         }
+        }
+        finally
+        {
+            span.end();
+        }
     }
 
     private void inviteAllChatMembers()
@@ -885,6 +911,21 @@ public class JitsiMeetConferenceImpl
      */
     private void inviteChatMember(ChatRoomMember chatRoomMember)
     {
+        Span span = tracer.spanBuilder("member-invite")
+            .setAttribute("member.name", chatRoomMember.getName())
+            .setAttribute("member.id", Objects.toString(chatRoomMember.getJid()))
+            .setAttribute("member.role", chatRoomMember.getRole().toString())
+            .setAttribute("member.region", StringUtils.defaultString(chatRoomMember.getRegion()))
+            .setAttribute("room.id", chatRoomMember.getChatRoom().getRoomJid().toString())
+            .setAttribute("member.stats-id", Objects.toString(chatRoomMember.getStatsId()))
+            .setAttribute("member.audioMuted", chatRoomMember.isAudioMuted())
+            .setAttribute("member.videoMuted", chatRoomMember.isVideoMuted())
+            .setAttribute("member.isJibri", chatRoomMember.isJibri())
+            .setAttribute("member.isJigasi", chatRoomMember.isJigasi())
+            .setAttribute("member.isTranscriber", chatRoomMember.isTranscriber())
+            .startSpan();
+        try (var scope = span.makeCurrent())
+        {
         synchronized (participantLock)
         {
             // Participant already connected ?
@@ -922,6 +963,11 @@ public class JitsiMeetConferenceImpl
             }
 
             inviteParticipant(participant, false, true);
+        }
+        }
+        finally
+        {
+            span.end();
         }
     }
 
