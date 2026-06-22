@@ -869,12 +869,12 @@ public class JitsiMeetConferenceImpl
 
             if (participants.isEmpty())
             {
-                inviteAllChatMembers();
+                inviteAllChatMembers(span.storeInContext(Context.current()));
             }
             // Only the one who has just joined
             else
             {
-                inviteChatMember(chatRoomMember);
+                inviteChatMember(span.storeInContext(Context.current()), chatRoomMember);
             }
         }
         }
@@ -884,11 +884,11 @@ public class JitsiMeetConferenceImpl
         }
     }
 
-    private void inviteAllChatMembers()
+    private void inviteAllChatMembers(Context context)
     {
         for (final ChatRoomMember member : chatRoom.getMembers())
         {
-            inviteChatMember(member);
+            inviteChatMember(context, member);
         }
         for (final ChatRoom visitorChatRoom: visitorChatRooms.values())
         {
@@ -896,7 +896,7 @@ public class JitsiMeetConferenceImpl
             {
                 if (member.getRole() == MemberRole.VISITOR)
                 {
-                    inviteChatMember(member);
+                    inviteChatMember(context, member);
                 }
             }
         }
@@ -909,7 +909,7 @@ public class JitsiMeetConferenceImpl
      *
      * @param chatRoomMember the chat member to be invited into the conference.
      */
-    private void inviteChatMember(ChatRoomMember chatRoomMember)
+    private void inviteChatMember(Context context, ChatRoomMember chatRoomMember)
     {
         Span span = tracer.spanBuilder("member-invite")
             .setAttribute("member.name", chatRoomMember.getName())
@@ -923,6 +923,7 @@ public class JitsiMeetConferenceImpl
             .setAttribute("member.isJibri", chatRoomMember.isJibri())
             .setAttribute("member.isJigasi", chatRoomMember.isJigasi())
             .setAttribute("member.isTranscriber", chatRoomMember.isTranscriber())
+            .setParent(context)
             .startSpan();
         try
         {
@@ -962,7 +963,7 @@ public class JitsiMeetConferenceImpl
                 }
             }
 
-            inviteParticipant(participant, false, true);
+            inviteParticipant(span.storeInContext(context), participant, false, true);
         }
         }
         finally
@@ -975,10 +976,16 @@ public class JitsiMeetConferenceImpl
      * Invites a {@link Participant} to the conference. Selects the bridge to use and starts a new
      * {@link ParticipantInviteRunnable} to allocate COLIBRI channels and initiate
      * a Jingle session with the {@link Participant}.
+     *
+     * @param context     the opentelemetry context.
      * @param participant the participant to invite.
-     * @param reInvite whether the participant is to be re-invited or invited for the first time.
+     * @param reInvite    whether the participant is to be re-invited or invited for the first time.
      */
-    private void inviteParticipant(@NotNull Participant participant, boolean reInvite, boolean justJoined)
+    private void inviteParticipant(
+            Context context,
+            @NotNull Participant participant,
+            boolean reInvite,
+            boolean justJoined)
     {
         // Colibri channel allocation and jingle invitation take time, so schedule them on a separate thread.
         ParticipantInviteRunnable channelAllocator = new ParticipantInviteRunnable(
@@ -988,7 +995,8 @@ public class JitsiMeetConferenceImpl
                 hasToStartAudioMuted(justJoined),
                 hasToStartVideoMuted(justJoined),
                 reInvite,
-                logger
+                logger,
+                context
         );
 
         participant.setInviteRunnable(channelAllocator);
@@ -1349,7 +1357,7 @@ public class JitsiMeetConferenceImpl
             if (reinvite)
             {
                 participants.put(participant.getChatMember().getOccupantJid(), participant);
-                inviteParticipant(participant, false, false);
+                inviteParticipant(Context.root(), participant, false, false);
             }
         }
     }
@@ -2262,7 +2270,7 @@ public class JitsiMeetConferenceImpl
 
                 // If were restarting the jingle session it's a fresh invite (reInvite = false), otherwise it's a
                 // transport-replace (reInvite = true)
-                inviteParticipant(participant, !restartJingle, false);
+                inviteParticipant(Context.root(), participant, !restartJingle, false);
             }
         }
     }
@@ -2468,7 +2476,7 @@ public class JitsiMeetConferenceImpl
                 if (participants.isEmpty())
                 {
                     logger.info("Transcribing enabled with existing participants, starting sessions.");
-                    inviteAllChatMembers();
+                    inviteAllChatMembers(Context.root());
                 }
             }
         }

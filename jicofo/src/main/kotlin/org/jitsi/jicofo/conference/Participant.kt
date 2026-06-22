@@ -17,6 +17,11 @@
  */
 package org.jitsi.jicofo.conference
 
+import io.opentelemetry.api.trace.Span
+import io.opentelemetry.api.trace.SpanContext
+import io.opentelemetry.api.trace.TraceFlags
+import io.opentelemetry.api.trace.TraceState
+import io.opentelemetry.context.Context
 import org.jitsi.jicofo.ConferenceConfig
 import org.jitsi.jicofo.TaskPools.Companion.scheduledPool
 import org.jitsi.jicofo.Telemetry
@@ -45,6 +50,7 @@ import org.jitsi.xmpp.extensions.jingle.JingleIQ
 import org.jitsi.xmpp.extensions.jingle.Reason
 import org.jitsi.xmpp.extensions.jitsimeet.BridgeSessionPacketExtension
 import org.jitsi.xmpp.extensions.jitsimeet.IceStatePacketExtension
+import org.jivesoftware.smack.packet.StandardExtensionElement
 import org.jivesoftware.smack.packet.StanzaError
 import org.jxmpp.jid.EntityFullJid
 import java.time.Clock
@@ -408,17 +414,36 @@ open class Participant @JvmOverloads constructor(
             return null
         }
 
-        override fun onSessionAccept(jingleSession: JingleSession, contents: List<ContentPacketExtension>) =
-            onSessionOrTransportAccept(jingleSession, contents, JingleAction.SESSION_ACCEPT)
+        override fun onSessionAccept(
+            jingleSession: JingleSession,
+            contents: List<ContentPacketExtension>,
+            trace: StandardExtensionElement?,
+        ) = onSessionOrTransportAccept(jingleSession, contents, trace, JingleAction.SESSION_ACCEPT)
 
         private fun onSessionOrTransportAccept(
             jingleSession: JingleSession,
             contents: List<ContentPacketExtension>,
+            trace: StandardExtensionElement?,
             action: JingleAction
         ): StanzaError? {
+            var context = Context.current()
+            if (trace != null) {
+                val parentSpanContext = SpanContext.createFromRemoteParent(
+                    trace.getAttributeValue("trace"),
+                    trace.getAttributeValue("parent"),
+                    TraceFlags.getSampled(),
+                    TraceState.getDefault()
+                )
+                context = context.with(
+                    Span.wrap(
+                        parentSpanContext
+                    )
+                )
+            }
             val span = tracer.spanBuilder("session-accept")
                 .setAttribute("sessionId", jingleSession.sid)
                 .setAttribute("remoteId", jingleSession.remoteJid.toString())
+                .setParent(context)
                 .startSpan()
             for ((index, content) in contents.withIndex()) {
                 span.setAttribute("$index.name", content.name)
@@ -530,7 +555,7 @@ open class Participant @JvmOverloads constructor(
         }
 
         override fun onTransportAccept(jingleSession: JingleSession, contents: List<ContentPacketExtension>) =
-            onSessionOrTransportAccept(jingleSession, contents, JingleAction.TRANSPORT_ACCEPT)
+            onSessionOrTransportAccept(jingleSession, contents, null, JingleAction.TRANSPORT_ACCEPT)
 
         override fun onTransportReject(jingleSession: JingleSession, iq: JingleIQ) {
             checkJingleSession(jingleSession)?.let { return }

@@ -40,7 +40,9 @@ import org.jivesoftware.smack.AbstractXMPPConnection
 import org.jivesoftware.smack.SmackException
 import org.jivesoftware.smack.packet.ExtensionElement
 import org.jivesoftware.smack.packet.IQ
+import org.jivesoftware.smack.packet.StandardExtensionElement
 import org.jivesoftware.smack.packet.StanzaError
+import org.jivesoftware.smack.util.XmppElementUtil
 import org.jxmpp.jid.Jid
 
 /**
@@ -107,27 +109,36 @@ class JingleSession(
     private fun doProcessIq(iq: JingleIQ) {
         val error = when (iq.action) {
             JingleAction.SESSION_ACCEPT -> {
+                val trace = XmppElementUtil.castOrThrow(
+                    iq.getExtensionElement("trace", "opentelemetry"),
+                    StandardExtensionElement::class.java
+                )
+
                 // The session needs to be marked as active early to allow code executing as part of onSessionAccept
                 // to proceed (e.g. to signal source updates).
                 state = State.ACTIVE
-                val error = requestHandler.onSessionAccept(this, iq.contentList)
+                val error = requestHandler.onSessionAccept(this, iq.contentList, trace)
                 if (error != null) state = State.ENDED
                 error
             }
 
             JingleAction.SESSION_INFO -> requestHandler.onSessionInfo(this, iq)
+
             JingleAction.SESSION_TERMINATE -> requestHandler.onSessionTerminate(this, iq).also {
                 state = State.ENDED
             }
 
             JingleAction.TRANSPORT_ACCEPT -> requestHandler.onTransportAccept(this, iq.contentList)
+
             JingleAction.TRANSPORT_INFO -> requestHandler.onTransportInfo(this, iq.contentList)
+
             JingleAction.TRANSPORT_REJECT -> {
                 requestHandler.onTransportReject(this, iq)
                 null
             }
 
             JingleAction.ADDSOURCE, JingleAction.SOURCEADD -> requestHandler.onAddSource(this, iq.contentList)
+
             JingleAction.REMOVESOURCE, JingleAction.SOURCEREMOVE -> requestHandler.onRemoveSource(
                 this,
                 iq.contentList
