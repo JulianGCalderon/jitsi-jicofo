@@ -19,6 +19,7 @@
 package org.jitsi.jicofo.bridge.colibri
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings
+import io.opentelemetry.context.Context
 import org.jitsi.jicofo.MediaType
 import org.jitsi.jicofo.OctoConfig
 import org.jitsi.jicofo.TaskPools
@@ -69,7 +70,8 @@ class ColibriV2SessionManager(
     internal val rtcStatsEnabled: Boolean,
     private val bridgeVersion: String?,
     parentLogger: Logger
-) : ColibriSessionManager, Cascade<Colibri2Session, Colibri2Session.Relay> {
+) : ColibriSessionManager,
+    Cascade<Colibri2Session, Colibri2Session.Relay> {
     private val logger = createChildLogger(parentLogger)
 
     private val eventEmitter = AsyncEventEmitter<ColibriSessionManager.Listener>(TaskPools.ioPool)
@@ -353,7 +355,7 @@ class ColibriV2SessionManager(
     }
 
     @Throws(ColibriAllocationFailedException::class, BridgeSelectionFailedException::class)
-    override fun allocate(participant: ParticipantAllocationParameters): ColibriAllocation {
+    override fun allocate(participant: ParticipantAllocationParameters, context: Context): ColibriAllocation {
         logger.info("Allocating for ${participant.id}")
         val stanzaCollector: StanzaCollector
         val session: Colibri2Session
@@ -412,7 +414,7 @@ class ColibriV2SessionManager(
             }
             participantInfo = ParticipantInfo(participant, session)
             session.bridge.endpointAdded()
-            stanzaCollector = session.sendAllocationRequest(participantInfo)
+            stanzaCollector = session.sendAllocationRequest(participantInfo, context)
             add(participantInfo)
             if (created) {
                 val topologySelectionResult = config.topologyStrategy.connectNode(
@@ -528,6 +530,7 @@ class ColibriV2SessionManager(
                     // If we trigger a re-invite we may cause the same error repeating.
                     throw ColibriAllocationFailedException("Bad request: ${error.toXML()}", false)
                 }
+
                 item_not_found -> {
                     if (reason == Colibri2Error.Reason.CONFERENCE_NOT_FOUND) {
                         // The conference on the bridge has expired. The state between jicofo and the bridge is out of
@@ -541,6 +544,7 @@ class ColibriV2SessionManager(
                         throw ColibriAllocationFailedException("Item not found, bridge unavailable?", false)
                     }
                 }
+
                 conflict -> {
                     if (reason == null) {
                         // An error NOT coming from the bridge.
@@ -561,6 +565,7 @@ class ColibriV2SessionManager(
                         throw ColibriAllocationFailedException("Colibri error: ${error.toXML()}", true)
                     }
                 }
+
                 service_unavailable -> {
                     if (reason == Colibri2Error.Reason.GRACEFUL_SHUTDOWN) {
                         // The fact that this bridge was selected means that we haven't received its updated presence yet,
@@ -572,6 +577,7 @@ class ColibriV2SessionManager(
                         throw ColibriAllocationFailedException("Bridge failed with service_unavailable.", true)
                     }
                 }
+
                 else -> {
                     session.bridge.isOperational = false
                     throw ColibriAllocationFailedException("Error: ${error.toXML()}", true)
@@ -632,7 +638,8 @@ class ColibriV2SessionManager(
         transport: IceUdpTransportPacketExtension?,
         sources: EndpointSourceSet?,
         initialLastN: InitialLastN?,
-        suppressLocalBridgeUpdate: Boolean
+        suppressLocalBridgeUpdate: Boolean,
+        context: Context
     ) = synchronized(syncRoot) {
         logger.debug("Updating $participantId with transport=$transport, sources=$sources")
 
@@ -644,7 +651,7 @@ class ColibriV2SessionManager(
                 return
             }
         if (!suppressLocalBridgeUpdate) {
-            participantInfo.session.updateParticipant(participantInfo, transport, sources, initialLastN)
+            participantInfo.session.updateParticipant(participantInfo, transport, sources, initialLastN, context)
         }
         if (sources != null) {
             participantInfo.sources = sources

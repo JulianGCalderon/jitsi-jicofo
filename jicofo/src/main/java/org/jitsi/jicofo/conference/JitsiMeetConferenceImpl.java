@@ -101,7 +101,7 @@ public class JitsiMeetConferenceImpl
      * {@link ConferenceListener} that will be notified
      * about conference events.
      */
-    private final JitsiMeetConferenceImpl.ConferenceListener listener;
+    private final ConferenceListener listener;
 
     @NotNull
     private final Logger logger;
@@ -1397,7 +1397,7 @@ public class JitsiMeetConferenceImpl
                 transport,
                 null /* no change in sources, just transport */,
                 null,
-                false);
+                false, Context.root());
     }
 
     /**
@@ -1447,7 +1447,7 @@ public class JitsiMeetConferenceImpl
                 null,
                 participant.getSources(),
                 null,
-                false);
+                false, Context.root());
         propagateNewSources(participant, sourcesAccepted);
     }
 
@@ -1482,7 +1482,7 @@ public class JitsiMeetConferenceImpl
                 null,
                 participant.getSources(),
                 null,
-                false);
+                false, Context.root());
 
         sendSourceRemove(new ConferenceSourceMap(participantId, sourcesAcceptedToBeRemoved), participant);
     }
@@ -1494,7 +1494,9 @@ public class JitsiMeetConferenceImpl
             @NotNull Participant participant,
             @NotNull EndpointSourceSet sourcesAdvertised,
             IceUdpTransportPacketExtension transport,
-            @Nullable InitialLastN initialLastN)
+            @Nullable InitialLastN initialLastN,
+            @Nullable Context context
+    )
     throws ValidationFailedException
     {
         String participantId = participant.getEndpointId();
@@ -1510,7 +1512,9 @@ public class JitsiMeetConferenceImpl
                 transport,
                 getSourcesForParticipant(participant),
                 initialLastN,
-                false);
+                false,
+                context!=null ? context:Context.root()
+        );
 
         if (!sourcesAccepted.isEmpty())
         {
@@ -1550,7 +1554,7 @@ public class JitsiMeetConferenceImpl
                         null,
                         participant.getSources(),
                         null,
-                        true);
+                        true, Context.root());
             }
 
             if (sendSourceRemove)

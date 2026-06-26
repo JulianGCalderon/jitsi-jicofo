@@ -471,7 +471,8 @@ open class Participant @JvmOverloads constructor(
                         this@Participant,
                         sourcesAdvertised,
                         contents.getTransport(),
-                        initialLastN
+                        initialLastN,
+                        span.storeInContext(context)
                     )
                 } catch (e: ValidationFailedException) {
                     return StanzaError.from(StanzaError.Condition.bad_request, e.message).build()
