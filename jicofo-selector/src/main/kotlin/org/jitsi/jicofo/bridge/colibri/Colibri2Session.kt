@@ -17,6 +17,8 @@
  */
 package org.jitsi.jicofo.bridge.colibri
 
+import io.opentelemetry.api.trace.Tracer
+import org.jitsi.jicofo.GlobalOTel.sdk
 import org.jitsi.jicofo.OctoConfig
 import org.jitsi.jicofo.TranscriptionConfig
 import org.jitsi.jicofo.bridge.Bridge
@@ -67,6 +69,7 @@ class Colibri2Session(
     private val logger = createChildLogger(parentLogger).apply {
         bridge.jid.resourceOrNull?.toString()?.let { addContext("bridge", it) }
     }
+    private val tracer: Tracer = sdk.getTracer("org.jitsi.jicofo.colibri")
     private val xmppConnection = colibriSessionManager.xmppConnection
     val id = UUID.randomUUID().toString()
 
@@ -130,6 +133,12 @@ class Colibri2Session(
         sources: EndpointSourceSet?,
         initialLastN: InitialLastN?
     ) {
+        val span = tracer.spanBuilder("colibri.update-participant")
+            .setAttribute("participant.id", participant.id)
+            .setAttribute("session.bridge", participant.session.bridge.jid.toString())
+            .startSpan()
+        span.end()
+
         if (transport == null && sources == null && initialLastN == null) {
             logger.info("Nothing to update.")
             return

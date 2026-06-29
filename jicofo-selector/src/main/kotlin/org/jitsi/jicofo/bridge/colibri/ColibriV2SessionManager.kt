@@ -19,6 +19,8 @@
 package org.jitsi.jicofo.bridge.colibri
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings
+import io.opentelemetry.api.trace.Tracer
+import org.jitsi.jicofo.GlobalOTel.sdk
 import org.jitsi.jicofo.MediaType
 import org.jitsi.jicofo.OctoConfig
 import org.jitsi.jicofo.TaskPools
@@ -52,6 +54,7 @@ import org.jivesoftware.smack.packet.StanzaError.Condition.item_not_found
 import org.jivesoftware.smack.packet.StanzaError.Condition.service_unavailable
 import org.json.simple.JSONArray
 import java.util.Collections.singletonList
+import java.util.Objects
 
 /**
  * Implements [ColibriSessionManager] using colibri2.
@@ -71,6 +74,7 @@ class ColibriV2SessionManager(
     parentLogger: Logger
 ) : ColibriSessionManager, Cascade<Colibri2Session, Colibri2Session.Relay> {
     private val logger = createChildLogger(parentLogger)
+    private val tracer: Tracer = sdk.getTracer("org.jitsi.jicofo.colibri")
 
     private val eventEmitter = AsyncEventEmitter<ColibriSessionManager.Listener>(TaskPools.ioPool)
     override fun addListener(listener: ColibriSessionManager.Listener) = eventEmitter.addHandler(listener)
@@ -354,6 +358,12 @@ class ColibriV2SessionManager(
 
     @Throws(ColibriAllocationFailedException::class, BridgeSelectionFailedException::class)
     override fun allocate(participant: ParticipantAllocationParameters): ColibriAllocation {
+        val span = tracer.spanBuilder("colibri.allocate")
+            .setAttribute("participant.id", participant.id)
+            .setAttribute("participant.region", Objects.toString(participant.region))
+            .startSpan()
+        span.end()
+
         logger.info("Allocating for ${participant.id}")
         val stanzaCollector: StanzaCollector
         val session: Colibri2Session
