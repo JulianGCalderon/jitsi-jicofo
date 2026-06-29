@@ -17,14 +17,8 @@
  */
 package org.jitsi.jicofo.conference
 
-import io.opentelemetry.api.trace.Span
-import io.opentelemetry.api.trace.SpanContext
-import io.opentelemetry.api.trace.TraceFlags
-import io.opentelemetry.api.trace.TraceState
-import io.opentelemetry.context.Context
 import org.jitsi.jicofo.ConferenceConfig
 import org.jitsi.jicofo.TaskPools.Companion.scheduledPool
-import org.jitsi.jicofo.Telemetry
 import org.jitsi.jicofo.conference.JitsiMeetConferenceImpl.InvalidBridgeSessionIdException
 import org.jitsi.jicofo.conference.JitsiMeetConferenceImpl.SenderCountExceededException
 import org.jitsi.jicofo.conference.source.ConferenceSourceMap
@@ -50,7 +44,6 @@ import org.jitsi.xmpp.extensions.jingle.JingleIQ
 import org.jitsi.xmpp.extensions.jingle.Reason
 import org.jitsi.xmpp.extensions.jitsimeet.BridgeSessionPacketExtension
 import org.jitsi.xmpp.extensions.jitsimeet.IceStatePacketExtension
-import org.jivesoftware.smack.packet.StandardExtensionElement
 import org.jivesoftware.smack.packet.StanzaError
 import org.jxmpp.jid.EntityFullJid
 import java.time.Clock
@@ -92,8 +85,6 @@ open class Participant @JvmOverloads constructor(
         ).apply {
         addContext("participant", endpointId)
     }
-
-    private val tracer = Telemetry.otel.getTracer("org.jitsi.jicofo")
 
     fun terminateJingleSession(reason: Reason, message: String?, sendIq: Boolean) {
         jingleSession?.terminate(reason, message, sendIq)
@@ -414,72 +405,33 @@ open class Participant @JvmOverloads constructor(
             return null
         }
 
-        override fun onSessionAccept(
-            jingleSession: JingleSession,
-            contents: List<ContentPacketExtension>,
-            trace: StandardExtensionElement?,
-        ) = onSessionOrTransportAccept(jingleSession, contents, trace, JingleAction.SESSION_ACCEPT)
+        override fun onSessionAccept(jingleSession: JingleSession, contents: List<ContentPacketExtension>) =
+            onSessionOrTransportAccept(jingleSession, contents, JingleAction.SESSION_ACCEPT)
 
         private fun onSessionOrTransportAccept(
             jingleSession: JingleSession,
             contents: List<ContentPacketExtension>,
-            trace: StandardExtensionElement?,
             action: JingleAction
         ): StanzaError? {
-            var context = Context.current()
-            if (trace != null) {
-                val parentSpanContext = SpanContext.createFromRemoteParent(
-                    trace.getAttributeValue("trace"),
-                    trace.getAttributeValue("parent"),
-                    TraceFlags.getSampled(),
-                    TraceState.getDefault()
-                )
-                context = context.with(
-                    Span.wrap(
-                        parentSpanContext
-                    )
-                )
+            if (this@Participant.jingleSession != null && this@Participant.jingleSession != jingleSession) {
+                logger.error("Rejecting $action for a session that has been replaced.")
+                return StanzaError.from(StanzaError.Condition.gone, "session has been replaced").build()
             }
-            val span = tracer.spanBuilder("session-accept")
-                .setAttribute("sessionId", jingleSession.sid)
-                .setAttribute("remoteId", jingleSession.remoteJid.toString())
-                .setParent(context)
-                .startSpan()
-            for ((index, content) in contents.withIndex()) {
-                span.setAttribute("$index.name", content.name)
-                span.setAttribute("$index.creator", content.creator.toString())
-                span.setAttribute("$index.disposition", content.disposition)
-                span.setAttribute("$index.xml", content.toXML().toString())
+
+            logger.info("Received $action")
+            val sourcesAdvertised = fromJingle(contents)
+            if (!sourcesAdvertised.isEmpty() && this@Participant.chatMember.role == MemberRole.VISITOR) {
+                return StanzaError.from(StanzaError.Condition.forbidden, "sources not allowed for visitors").build()
             }
+            val initialLastN: InitialLastN? =
+                contents.find { it.name == "video" }?.getChildExtension(InitialLastN::class.java)
+
             try {
-                if (this@Participant.jingleSession != null && this@Participant.jingleSession != jingleSession) {
-                    logger.error("Rejecting $action for a session that has been replaced.")
-                    return StanzaError.from(StanzaError.Condition.gone, "session has been replaced").build()
-                }
-
-                logger.info("Received $action")
-                val sourcesAdvertised = fromJingle(contents)
-                if (!sourcesAdvertised.isEmpty() && this@Participant.chatMember.role == MemberRole.VISITOR) {
-                    return StanzaError.from(StanzaError.Condition.forbidden, "sources not allowed for visitors")
-                        .build()
-                }
-                val initialLastN: InitialLastN? =
-                    contents.find { it.name == "video" }?.getChildExtension(InitialLastN::class.java)
-
-                try {
-                    conference.acceptSession(
-                        this@Participant,
-                        sourcesAdvertised,
-                        contents.getTransport(),
-                        initialLastN,
-                        span.storeInContext(context)
-                    )
-                } catch (e: ValidationFailedException) {
-                    return StanzaError.from(StanzaError.Condition.bad_request, e.message).build()
-                }
-            } finally {
-                span.end()
+                conference.acceptSession(this@Participant, sourcesAdvertised, contents.getTransport(), initialLastN)
+            } catch (e: ValidationFailedException) {
+                return StanzaError.from(StanzaError.Condition.bad_request, e.message).build()
             }
+
             return null
         }
 
@@ -556,7 +508,7 @@ open class Participant @JvmOverloads constructor(
         }
 
         override fun onTransportAccept(jingleSession: JingleSession, contents: List<ContentPacketExtension>) =
-            onSessionOrTransportAccept(jingleSession, contents, null, JingleAction.TRANSPORT_ACCEPT)
+            onSessionOrTransportAccept(jingleSession, contents, JingleAction.TRANSPORT_ACCEPT)
 
         override fun onTransportReject(jingleSession: JingleSession, iq: JingleIQ) {
             checkJingleSession(jingleSession)?.let { return }

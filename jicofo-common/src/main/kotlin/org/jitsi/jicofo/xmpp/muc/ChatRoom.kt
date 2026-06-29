@@ -17,7 +17,6 @@
  */
 package org.jitsi.jicofo.xmpp.muc
 
-import io.opentelemetry.context.Context
 import org.jitsi.jicofo.MediaType
 import org.jitsi.jicofo.xmpp.RoomMetadata
 import org.jitsi.jicofo.xmpp.XmppProvider
@@ -166,8 +165,6 @@ interface ChatRoom {
 
     /** Queue a task to be executed sequentially with respect to other tasks queued through this method. */
     fun queueXmppTask(runnable: () -> Unit)
-
-    fun setContext(context: Context)
 }
 
 /** Holds fields read from the MUC config form at join time, which never change. */

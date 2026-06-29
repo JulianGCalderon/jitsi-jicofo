@@ -19,7 +19,6 @@ package org.jitsi.jicofo.xmpp.jingle
 
 import org.jitsi.xmpp.extensions.jingle.ContentPacketExtension
 import org.jitsi.xmpp.extensions.jingle.JingleIQ
-import org.jivesoftware.smack.packet.StandardExtensionElement
 import org.jivesoftware.smack.packet.StanzaError
 
 /**
@@ -50,11 +49,7 @@ interface JingleRequestHandler {
      * @return a [StanzaError] if an error should be returned as response to the original request or null if
      * processing was successful.
      */
-    fun onSessionAccept(
-        jingleSession: JingleSession,
-        contents: List<ContentPacketExtension>,
-        trace: StandardExtensionElement?
-    ): StanzaError? = null
+    fun onSessionAccept(jingleSession: JingleSession, contents: List<ContentPacketExtension>): StanzaError? = null
 
     /**
      * A 'session-info' IQ was received.

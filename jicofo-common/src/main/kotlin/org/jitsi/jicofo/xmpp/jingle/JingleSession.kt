@@ -17,6 +17,13 @@
  */
 package org.jitsi.jicofo.xmpp.jingle
 
+import io.opentelemetry.api.trace.Span
+import io.opentelemetry.api.trace.SpanContext
+import io.opentelemetry.api.trace.TraceFlags
+import io.opentelemetry.api.trace.TraceState
+import io.opentelemetry.api.trace.Tracer
+import io.opentelemetry.context.Context
+import org.jitsi.jicofo.GlobalOTel
 import org.jitsi.jicofo.TaskPools
 import org.jitsi.jicofo.conference.source.ConferenceSourceMap
 import org.jitsi.jicofo.xmpp.IqProcessingResult
@@ -28,6 +35,7 @@ import org.jitsi.utils.MediaType
 import org.jitsi.utils.OrderedJsonObject
 import org.jitsi.utils.logging2.createLogger
 import org.jitsi.utils.queue.PacketQueue
+import org.jitsi.xmpp.extensions.TraceParent
 import org.jitsi.xmpp.extensions.jingle.ContentPacketExtension
 import org.jitsi.xmpp.extensions.jingle.GroupPacketExtension
 import org.jitsi.xmpp.extensions.jingle.JingleAction
@@ -40,10 +48,9 @@ import org.jivesoftware.smack.AbstractXMPPConnection
 import org.jivesoftware.smack.SmackException
 import org.jivesoftware.smack.packet.ExtensionElement
 import org.jivesoftware.smack.packet.IQ
-import org.jivesoftware.smack.packet.StandardExtensionElement
 import org.jivesoftware.smack.packet.StanzaError
-import org.jivesoftware.smack.util.XmppElementUtil
 import org.jxmpp.jid.Jid
+import java.util.Objects
 
 /**
  * Class describes Jingle session.
@@ -68,6 +75,7 @@ class JingleSession(
         addContext("remoteJid", remoteJid.toString())
         addContext("sid", sid)
     }
+    val tracer: Tracer = GlobalOTel.sdk.getTracer("org.jitsi.jicofo.xmpp.jingle")
 
     private val incomingIqQueue = PacketQueue<JingleIQ>(
         Integer.MAX_VALUE,
@@ -107,38 +115,54 @@ class JingleSession(
     }
 
     private fun doProcessIq(iq: JingleIQ) {
+        val traceParent = iq.getExtension(TraceParent::class.java)
+        val context = if (traceParent != null) {
+            Context.root().with(
+                Span.wrap(
+                    SpanContext.createFromRemoteParent(
+                        traceParent.traceId,
+                        traceParent.parentId,
+                        TraceFlags.getSampled(),
+                        TraceState.getDefault(),
+                    )
+                )
+            )
+        } else {
+            Context.root()
+        }
+        val span = tracer.spanBuilder("jingle.${iq.action}")
+            .setParent(context)
+            .setAttribute("sessionId", iq.sid)
+            .setAttribute("action", Objects.toString(iq.action))
+            .setAttribute("initiator", Objects.toString(iq.initiator))
+            .setAttribute("responder", Objects.toString(iq.responder))
+            .setAttribute("reason", Objects.toString(iq.reason))
+            .setAttribute("sessionInfo.type", Objects.toString(iq.sessionInfo?.type))
+            .startSpan()
+
         val error = when (iq.action) {
             JingleAction.SESSION_ACCEPT -> {
-                val trace = XmppElementUtil.castOrThrow(
-                    iq.getExtensionElement("trace", "opentelemetry"),
-                    StandardExtensionElement::class.java
-                )
-
                 // The session needs to be marked as active early to allow code executing as part of onSessionAccept
                 // to proceed (e.g. to signal source updates).
                 state = State.ACTIVE
-                val error = requestHandler.onSessionAccept(this, iq.contentList, trace)
+                val error = requestHandler.onSessionAccept(this, iq.contentList)
                 if (error != null) state = State.ENDED
                 error
             }
 
             JingleAction.SESSION_INFO -> requestHandler.onSessionInfo(this, iq)
-
             JingleAction.SESSION_TERMINATE -> requestHandler.onSessionTerminate(this, iq).also {
                 state = State.ENDED
             }
 
             JingleAction.TRANSPORT_ACCEPT -> requestHandler.onTransportAccept(this, iq.contentList)
-
             JingleAction.TRANSPORT_INFO -> requestHandler.onTransportInfo(this, iq.contentList)
-
             JingleAction.TRANSPORT_REJECT -> {
                 requestHandler.onTransportReject(this, iq)
                 null
             }
 
             JingleAction.ADDSOURCE, JingleAction.SOURCEADD -> requestHandler.onAddSource(this, iq.contentList)
-
             JingleAction.REMOVESOURCE, JingleAction.SOURCEREMOVE -> requestHandler.onRemoveSource(
                 this,
                 iq.contentList
@@ -158,6 +182,7 @@ class JingleSession(
             IQ.createErrorResponse(iq, error)
         }
         connection.tryToSendStanza(response)
+        span.end()
     }
 
     fun terminate(

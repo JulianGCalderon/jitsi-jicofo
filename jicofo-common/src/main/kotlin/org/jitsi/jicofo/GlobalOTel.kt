@@ -20,8 +20,8 @@ package org.jitsi.jicofo
 import io.opentelemetry.api.OpenTelemetry
 import io.opentelemetry.sdk.autoconfigure.AutoConfiguredOpenTelemetrySdk
 
-object Telemetry {
-    val otel: OpenTelemetry by lazy {
+object GlobalOTel {
+    val sdk: OpenTelemetry by lazy {
         AutoConfiguredOpenTelemetrySdk.builder().build().openTelemetrySdk
     }
 }

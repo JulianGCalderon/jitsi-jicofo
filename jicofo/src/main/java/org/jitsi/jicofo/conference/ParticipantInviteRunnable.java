@@ -17,8 +17,6 @@
  */
 package org.jitsi.jicofo.conference;
 
-import io.opentelemetry.api.trace.Span;
-import io.opentelemetry.context.Context;
 import org.jetbrains.annotations.*;
 import org.jitsi.jicofo.*;
 import org.jitsi.jicofo.bridge.colibri.*;
@@ -27,7 +25,6 @@ import org.jitsi.jicofo.conference.source.*;
 import org.jitsi.jicofo.jibri.*;
 import org.jitsi.jicofo.jigasi.*;
 import org.jitsi.jicofo.util.*;
-import org.jitsi.jicofo.xmpp.TracePacketExtension;
 import org.jitsi.jicofo.xmpp.jingle.*;
 import org.jitsi.jicofo.xmpp.muc.*;
 import org.jitsi.xmpp.extensions.colibri2.*;
@@ -56,8 +53,6 @@ public class ParticipantInviteRunnable implements Runnable, Cancelable
      * invited.
      */
     private final JitsiMeetConferenceImpl meetConference;
-
-    private final Context context;
 
     @NotNull private final ColibriSessionManager colibriSessionManager;
 
@@ -112,12 +107,10 @@ public class ParticipantInviteRunnable implements Runnable, Cancelable
             boolean startAudioMuted,
             boolean startVideoMuted,
             boolean reInvite,
-            Logger parentLogger,
-            Context context)
+            Logger parentLogger)
     {
         this.meetConference = meetConference;
         this.colibriSessionManager = colibriSessionManager;
-        this.context = context;
 
         boolean forceMuteAudio = false;
         boolean forceMuteVideo = false;
@@ -214,7 +207,7 @@ public class ParticipantInviteRunnable implements Runnable, Cancelable
                     (participant.getChatMember().getRole() == MemberRole.VISITOR),
                     privateAddresses,
                     medias);
-            colibriAllocation = colibriSessionManager.allocate(participantOptions, context);
+            colibriAllocation = colibriSessionManager.allocate(participantOptions);
         }
         catch (BridgeSelectionFailedException e)
         {
@@ -381,13 +374,6 @@ public class ParticipantInviteRunnable implements Runnable, Cancelable
         additionalExtensions.add(new BridgeSessionPacketExtension(
                 colibriAllocation.getBridgeSessionId(),
                 colibriAllocation.getRegion()));
-
-        additionalExtensions.add(
-                new TracePacketExtension(
-                        Span.fromContext(context).getSpanContext().getTraceId(),
-                        Span.fromContext(context).getSpanContext().getSpanId()
-                )
-        );
 
         // We're about to send a jingle message that will initialize or reset the sources signaled to the participant.
         // Reflect this in the participant state.

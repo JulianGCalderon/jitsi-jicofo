@@ -24,7 +24,6 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.mockk.every
 import io.mockk.mockk
-import io.opentelemetry.context.Context
 import org.jitsi.config.withNewConfig
 import org.jitsi.jicofo.ConferenceConfig
 import org.jitsi.jicofo.TaskPools
@@ -93,7 +92,7 @@ class ConferenceTest : ShouldSpec() {
                 }
             }
         }
-    ).apply { start(Context.root()) }
+    ).apply { start() }
 
     override fun isolationMode(): IsolationMode = IsolationMode.InstancePerLeaf
 
@@ -411,9 +410,7 @@ class ColibriAndJingleXmppConnection : MockXmppConnection() {
 
     override fun handleIq(iq: IQ): IQ? = when (iq) {
         is ConferenceModifyIQ -> colibri2Server.handleConferenceModifyIq(iq)
-
         is JingleIQ -> remoteParticipants.computeIfAbsent(iq.to) { RemoteParticipant(iq.to) }.handleJingleIq(iq)
-
         else -> {
             println("Not handling ${iq.toXML()}")
             null

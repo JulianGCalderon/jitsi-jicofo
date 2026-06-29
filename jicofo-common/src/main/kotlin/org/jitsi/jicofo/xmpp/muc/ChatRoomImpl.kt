@@ -18,14 +18,11 @@
 package org.jitsi.jicofo.xmpp.muc
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings
-import io.opentelemetry.api.trace.Span
-import io.opentelemetry.context.Context
 import org.jitsi.jicofo.JicofoConfig
 import org.jitsi.jicofo.MediaType
 import org.jitsi.jicofo.TaskPools.Companion.ioPool
 import org.jitsi.jicofo.util.PendingCount
 import org.jitsi.jicofo.xmpp.RoomMetadata
-import org.jitsi.jicofo.xmpp.TracePacketExtension
 import org.jitsi.jicofo.xmpp.XmppProvider
 import org.jitsi.jicofo.xmpp.muc.MemberRole.Companion.fromSmack
 import org.jitsi.jicofo.xmpp.sendIqAndGetResponse
@@ -75,17 +72,9 @@ class ChatRoomImpl(
     logLevel: Level?,
     /** Callback to call when the room is left. */
     private val leaveCallback: (ChatRoomImpl) -> Unit
-) : ChatRoom,
-    PresenceListener {
+) : ChatRoom, PresenceListener {
     private val logger = createLogger(minLogLevel = logLevel ?: Level.ALL).apply {
         addContext("room", roomJid.toString())
-    }
-
-    private var context: Context = Context.root()
-    override fun setContext(context: Context) {
-        synchronized(this@ChatRoomImpl) {
-            this.context = context
-        }
     }
 
     /**
@@ -151,12 +140,6 @@ class ChatRoomImpl(
         // the MUC service to re-send the presence of each occupant in the
         // room.
         synchronized(this@ChatRoomImpl) {
-            presenceBuilder.addExtension(
-                TracePacketExtension(
-                    Span.fromContext(this.context).spanContext.traceId,
-                    Span.fromContext(this.context).spanContext.spanId,
-                )
-            )
             val p = presenceBuilder.build()
             p.removeExtension(
                 MUCInitialPresence.ELEMENT,

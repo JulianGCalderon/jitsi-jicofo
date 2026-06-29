@@ -129,15 +129,10 @@
       <artifactId>jicoco-test-kotlin</artifactId>
       <scope>test</scope>
     </dependency>
-      <dependency>
-      <groupId>io.opentelemetry</groupId>
-      <artifactId>opentelemetry-sdk-extension-autoconfigure</artifactId>
-      <version>1.48.0</version>
-    </dependency>
     <dependency>
       <groupId>io.opentelemetry</groupId>
-      <artifactId>opentelemetry-exporter-otlp</artifactId>
-      <version>1.48.0</version>
+      <artifactId>opentelemetry-sdk-extension-autoconfigure</artifactId>
+      <version>${opentelemetry.version}</version>
     </dependency>
     <dependency>
       <groupId>io.opentelemetry</groupId>
@@ -147,12 +142,17 @@
     <dependency>
       <groupId>io.opentelemetry</groupId>
       <artifactId>opentelemetry-sdk</artifactId>
-      <version>1.48.0</version>
+      <version>${opentelemetry.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.opentelemetry</groupId>
+      <artifactId>opentelemetry-api</artifactId>
+      <version>${opentelemetry.version}</version>
     </dependency>
     <dependency>
       <groupId>io.opentelemetry</groupId>
       <artifactId>opentelemetry-context</artifactId>
-      <version>1.48.0</version>
+      <version>${opentelemetry.version}</version>
     </dependency>
   </dependencies>
   <build>
