@@ -18,6 +18,8 @@
 package org.jitsi.jicofo.xmpp
 
 import org.jitsi.xmpp.extensions.DefaultPacketExtensionProvider
+import org.jitsi.xmpp.extensions.TraceParent
+import org.jitsi.xmpp.extensions.TraceParentProvider
 import org.jitsi.xmpp.extensions.colibri.ColibriStatsIqProvider
 import org.jitsi.xmpp.extensions.colibri.ForcefulShutdownIqProvider
 import org.jitsi.xmpp.extensions.colibri.GracefulShutdownIqProvider
@@ -162,4 +164,9 @@ fun registerXmppExtensions() {
         DefaultPacketExtensionProvider(VideoMutedExtension::class.java)
     )
     IqProviderUtils.registerProviders()
+    ProviderManager.addExtensionProvider(
+        TraceParent.ELEMENT,
+        TraceParent.NAMESPACE,
+        TraceParentProvider()
+    )
 }

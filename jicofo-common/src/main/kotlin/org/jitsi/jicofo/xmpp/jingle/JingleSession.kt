@@ -313,6 +313,7 @@ class JingleSession(
             if (encodeSourcesAsJson) {
                 addExtension(sources.toJsonMessageExtension())
             }
+            addExtension(TraceParent(span.spanContext.traceId, span.spanContext.spanId))
         }
 
         jingleIqRequestHandler.registerSession(this)
