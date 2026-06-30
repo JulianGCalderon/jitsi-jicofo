@@ -226,6 +226,16 @@ class JingleSession(
         additionalExtensions: List<ExtensionElement>,
         sources: ConferenceSourceMap
     ): Boolean {
+        val span = tracer.spanBuilder("jingle.replace-transport")
+            .setAttribute("to", remoteJid.toString())
+            .setAttribute("sid", sid)
+            .setAttribute("state", state.toString())
+            .startSpan()
+        for (sourceSet in sources) {
+            span.setAttribute("endpoint.${sourceSet.key}", sourceSet.value.compactJson)
+        }
+        span.end()
+
         logger.info("Sending transport-replace, sources=$sources.")
         if (state != State.ACTIVE) logger.error("Sending transport-replace for session in state $state")
 
@@ -285,6 +295,16 @@ class JingleSession(
         additionalExtensions: List<ExtensionElement>,
         sources: ConferenceSourceMap,
     ): Boolean {
+        val span = tracer.spanBuilder("jingle.initiate-session")
+            .setAttribute("to", remoteJid.toString())
+            .setAttribute("sid", sid)
+            .setAttribute("state", state.toString())
+            .startSpan()
+        for (sourceSet in sources) {
+            span.setAttribute("endpoint.${sourceSet.key}", sourceSet.value.compactJson)
+        }
+        span.end()
+
         if (state != State.PENDING) logger.error("Sending session-initiate for session in state $state")
         val contentsWithSources = if (encodeSourcesAsJson) contents else sources.toContents(contents)
         val sessionInitiate = createSessionInitiate(localJid, remoteJid, sid, contentsWithSources).apply {
