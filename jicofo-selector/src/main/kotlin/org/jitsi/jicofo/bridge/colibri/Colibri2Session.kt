@@ -137,40 +137,45 @@ class Colibri2Session(
         transport: IceUdpTransportPacketExtension?,
         /** The sources to set for the colibri2 endpoint, or null if the sources are not to be modified. */
         sources: EndpointSourceSet?,
-        initialLastN: InitialLastN?
+        initialLastN: InitialLastN?,
+        context: Context = Context.root()
     ) {
         val span = tracer.spanBuilder("colibri.update-participant")
             .setAttribute("participant.id", participant.id)
             .setAttribute("session.bridge", participant.session.bridge.jid.toString())
+            .setParent(context)
             .startSpan()
-        span.end()
-        val context = span.storeInContext(Context.root())
+        try {
+            val context = span.storeInContext(context)
 
-        if (transport == null && sources == null && initialLastN == null) {
-            logger.info("Nothing to update.")
-            return
+            if (transport == null && sources == null && initialLastN == null) {
+                logger.info("Nothing to update.")
+                return
+            }
+
+            val request = createRequest(context = context)
+            val endpoint = Colibri2Endpoint.getBuilder().apply {
+                setId(participant.id)
+                setStatsId(participant.statsId)
+            }
+
+            if (transport != null) {
+                endpoint.setTransport(Transport.getBuilder().setIceUdpExtension(transport).build())
+            }
+
+            if (sources != null) {
+                endpoint.setSources(sources.toColibriMediaSources(participant.id))
+            }
+
+            initialLastN?.let {
+                endpoint.setInitialLastN(it)
+            }
+
+            request.addEndpoint(endpoint.build())
+            sendRequest(request.build(), "updateParticipant")
+        } finally {
+            span.end()
         }
-
-        val request = createRequest(context = context)
-        val endpoint = Colibri2Endpoint.getBuilder().apply {
-            setId(participant.id)
-            setStatsId(participant.statsId)
-        }
-
-        if (transport != null) {
-            endpoint.setTransport(Transport.getBuilder().setIceUdpExtension(transport).build())
-        }
-
-        if (sources != null) {
-            endpoint.setSources(sources.toColibriMediaSources(participant.id))
-        }
-
-        initialLastN?.let {
-            endpoint.setInitialLastN(it)
-        }
-
-        request.addEndpoint(endpoint.build())
-        sendRequest(request.build(), "updateParticipant")
     }
 
     internal fun updateForceMute(participants: Set<ParticipantInfo>) {

@@ -802,8 +802,9 @@ public class JitsiMeetConferenceImpl
                 .setAttribute("member.isTranscriber", chatRoomMember.isTranscriber())
                 .setAttribute("room.id", chatRoomMember.getChatRoom().getRoomJid().toString())
                 .startSpan();
-        span.end();
-
+        Context context = span.storeInContext(Context.root());
+        try
+        {
         // Detect a race condition in which this thread runs before EntityCapsManager's async StanzaListener that
         // populates the JID to NodeVerHash cache. If that's the case calling getFeatures() would result in an
         // unnecessary disco#info request being sent. That's not an unrecoverable problem, but just yielding should
@@ -869,21 +870,26 @@ public class JitsiMeetConferenceImpl
 
             if (participants.isEmpty())
             {
-                inviteAllChatMembers();
+                inviteAllChatMembers(context);
             }
             // Only the one who has just joined
             else
             {
-                inviteChatMember(chatRoomMember);
+                inviteChatMember(chatRoomMember, context);
             }
+        }
+        }
+        finally
+        {
+            span.end();
         }
     }
 
-    private void inviteAllChatMembers()
+    private void inviteAllChatMembers(Context context)
     {
         for (final ChatRoomMember member : chatRoom.getMembers())
         {
-            inviteChatMember(member);
+            inviteChatMember(member, context);
         }
         for (final ChatRoom visitorChatRoom: visitorChatRooms.values())
         {
@@ -891,7 +897,7 @@ public class JitsiMeetConferenceImpl
             {
                 if (member.getRole() == MemberRole.VISITOR)
                 {
-                    inviteChatMember(member);
+                    inviteChatMember(member, context);
                 }
             }
         }
@@ -904,7 +910,7 @@ public class JitsiMeetConferenceImpl
      *
      * @param chatRoomMember the chat member to be invited into the conference.
      */
-    private void inviteChatMember(ChatRoomMember chatRoomMember)
+    private void inviteChatMember(ChatRoomMember chatRoomMember, Context context)
     {
         synchronized (participantLock)
         {
@@ -942,7 +948,7 @@ public class JitsiMeetConferenceImpl
                 }
             }
 
-            inviteParticipant(participant, false, true);
+            inviteParticipant(participant, false, true, context);
         }
     }
 
@@ -952,8 +958,11 @@ public class JitsiMeetConferenceImpl
      * a Jingle session with the {@link Participant}.
      * @param participant the participant to invite.
      * @param reInvite whether the participant is to be re-invited or invited for the first time.
+     * @param context
      */
-    private void inviteParticipant(@NotNull Participant participant, boolean reInvite, boolean justJoined)
+    private void inviteParticipant(
+            @NotNull Participant participant, boolean reInvite, boolean justJoined, Context context
+    )
     {
         // Colibri channel allocation and jingle invitation take time, so schedule them on a separate thread.
         ParticipantInviteRunnable channelAllocator = new ParticipantInviteRunnable(
@@ -963,7 +972,8 @@ public class JitsiMeetConferenceImpl
                 hasToStartAudioMuted(justJoined),
                 hasToStartVideoMuted(justJoined),
                 reInvite,
-                logger
+                logger,
+                context
         );
 
         participant.setInviteRunnable(channelAllocator);
@@ -1324,7 +1334,7 @@ public class JitsiMeetConferenceImpl
             if (reinvite)
             {
                 participants.put(participant.getChatMember().getOccupantJid(), participant);
-                inviteParticipant(participant, false, false);
+                inviteParticipant(participant, false, false, Context.root());
             }
         }
     }
@@ -1363,7 +1373,9 @@ public class JitsiMeetConferenceImpl
                 transport,
                 null /* no change in sources, just transport */,
                 null,
-                false);
+                false,
+                Context.root()
+        );
     }
 
     /**
@@ -1413,7 +1425,8 @@ public class JitsiMeetConferenceImpl
                 null,
                 participant.getSources(),
                 null,
-                false);
+                false,
+                Context.root());
         propagateNewSources(participant, sourcesAccepted);
     }
 
@@ -1448,7 +1461,8 @@ public class JitsiMeetConferenceImpl
                 null,
                 participant.getSources(),
                 null,
-                false);
+                false,
+                Context.root());
 
         sendSourceRemove(new ConferenceSourceMap(participantId, sourcesAcceptedToBeRemoved), participant);
     }
@@ -1460,7 +1474,9 @@ public class JitsiMeetConferenceImpl
             @NotNull Participant participant,
             @NotNull EndpointSourceSet sourcesAdvertised,
             IceUdpTransportPacketExtension transport,
-            @Nullable InitialLastN initialLastN)
+            @Nullable InitialLastN initialLastN,
+            Context context
+    )
     throws ValidationFailedException
     {
         String participantId = participant.getEndpointId();
@@ -1476,7 +1492,8 @@ public class JitsiMeetConferenceImpl
                 transport,
                 getSourcesForParticipant(participant),
                 initialLastN,
-                false);
+                false,
+                context);
 
         if (!sourcesAccepted.isEmpty())
         {
@@ -1516,7 +1533,8 @@ public class JitsiMeetConferenceImpl
                         null,
                         participant.getSources(),
                         null,
-                        true);
+                        true,
+                        Context.root());
             }
 
             if (sendSourceRemove)
@@ -2237,7 +2255,7 @@ public class JitsiMeetConferenceImpl
 
                 // If were restarting the jingle session it's a fresh invite (reInvite = false), otherwise it's a
                 // transport-replace (reInvite = true)
-                inviteParticipant(participant, !restartJingle, false);
+                inviteParticipant(participant, !restartJingle, false, Context.root());
             }
         }
     }
@@ -2443,7 +2461,7 @@ public class JitsiMeetConferenceImpl
                 if (participants.isEmpty())
                 {
                     logger.info("Transcribing enabled with existing participants, starting sessions.");
-                    inviteAllChatMembers();
+                    inviteAllChatMembers(Context.root());
                 }
             }
         }

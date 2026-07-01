@@ -17,6 +17,7 @@
  */
 package org.jitsi.jicofo.bridge.colibri
 
+import io.opentelemetry.context.Context
 import org.jitsi.jicofo.MediaType
 import org.jitsi.jicofo.bridge.Bridge
 import org.jitsi.jicofo.bridge.ConferenceBridgeProperties
@@ -47,7 +48,7 @@ interface ColibriSessionManager {
     fun getParticipants(bridge: Bridge): List<String>
 
     @Throws(ColibriAllocationFailedException::class, BridgeSelectionFailedException::class)
-    fun allocate(participant: ParticipantAllocationParameters): ColibriAllocation
+    fun allocate(participant: ParticipantAllocationParameters, context: Context = Context.root()): ColibriAllocation
     fun getBridges(): Map<Bridge, ConferenceBridgeProperties>
 
     fun updateParticipant(
@@ -55,7 +56,8 @@ interface ColibriSessionManager {
         transport: IceUdpTransportPacketExtension? = null,
         sources: EndpointSourceSet? = null,
         initialLastN: InitialLastN? = null,
-        suppressLocalBridgeUpdate: Boolean = false
+        suppressLocalBridgeUpdate: Boolean = false,
+        context: Context = Context.root(),
     )
 
     fun getBridgeSessionId(participantId: String): Pair<Bridge?, String?>
