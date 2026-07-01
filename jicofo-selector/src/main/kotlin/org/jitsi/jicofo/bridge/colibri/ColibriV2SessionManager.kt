@@ -20,6 +20,7 @@ package org.jitsi.jicofo.bridge.colibri
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings
 import io.opentelemetry.api.trace.Tracer
+import io.opentelemetry.context.Context
 import org.jitsi.jicofo.GlobalOTel.sdk
 import org.jitsi.jicofo.MediaType
 import org.jitsi.jicofo.OctoConfig
@@ -363,6 +364,7 @@ class ColibriV2SessionManager(
             .setAttribute("participant.region", Objects.toString(participant.region))
             .startSpan()
         span.end()
+        val context = span.storeInContext(Context.root())
 
         logger.info("Allocating for ${participant.id}")
         val stanzaCollector: StanzaCollector
@@ -422,7 +424,7 @@ class ColibriV2SessionManager(
             }
             participantInfo = ParticipantInfo(participant, session)
             session.bridge.endpointAdded()
-            stanzaCollector = session.sendAllocationRequest(participantInfo)
+            stanzaCollector = session.sendAllocationRequest(participantInfo, context)
             add(participantInfo)
             if (created) {
                 val topologySelectionResult = config.topologyStrategy.connectNode(

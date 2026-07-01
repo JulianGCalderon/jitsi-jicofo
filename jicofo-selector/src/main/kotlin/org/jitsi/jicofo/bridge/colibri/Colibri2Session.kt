@@ -17,7 +17,9 @@
  */
 package org.jitsi.jicofo.bridge.colibri
 
+import io.opentelemetry.api.trace.Span
 import io.opentelemetry.api.trace.Tracer
+import io.opentelemetry.context.Context
 import org.jitsi.jicofo.GlobalOTel.sdk
 import org.jitsi.jicofo.OctoConfig
 import org.jitsi.jicofo.TranscriptionConfig
@@ -33,6 +35,7 @@ import org.jitsi.utils.OrderedJsonObject
 import org.jitsi.utils.TemplatedUrl
 import org.jitsi.utils.logging2.Logger
 import org.jitsi.utils.logging2.createChildLogger
+import org.jitsi.xmpp.extensions.TraceParent
 import org.jitsi.xmpp.extensions.colibri.WebSocketPacketExtension
 import org.jitsi.xmpp.extensions.colibri2.Colibri2Endpoint
 import org.jitsi.xmpp.extensions.colibri2.Colibri2Error
@@ -95,8 +98,11 @@ class Colibri2Session(
     override val relays = mutableMapOf<String, Relay>()
 
     /** Creates and sends a request to allocate a new endpoint. Returns a [StanzaCollector] for the response. */
-    internal fun sendAllocationRequest(participant: ParticipantInfo): StanzaCollector {
-        val request = createRequest(!created)
+    internal fun sendAllocationRequest(
+        participant: ParticipantInfo,
+        context: Context = Context.root()
+    ): StanzaCollector {
+        val request = createRequest(!created, context)
         val endpoint = participant.toEndpoint(create = true, expire = false).apply {
             if (participant.audioMuted || participant.videoMuted) {
                 setForceMute(participant.audioMuted, participant.videoMuted)
@@ -138,13 +144,14 @@ class Colibri2Session(
             .setAttribute("session.bridge", participant.session.bridge.jid.toString())
             .startSpan()
         span.end()
+        val context = span.storeInContext(Context.root())
 
         if (transport == null && sources == null && initialLastN == null) {
             logger.info("Nothing to update.")
             return
         }
 
-        val request = createRequest()
+        val request = createRequest(context = context)
         val endpoint = Colibri2Endpoint.getBuilder().apply {
             setId(participant.id)
             setStatsId(participant.statsId)
@@ -203,37 +210,47 @@ class Colibri2Session(
         sendRequest(request.build(), "expire(participantsToExpire)")
     }
 
-    private fun createRequest(create: Boolean = false) = ConferenceModifyIQ.builder(xmppConnection).apply {
-        to(bridge.jid)
-        setMeetingId(colibriSessionManager.meetingId)
-        if (create) {
-            setCreate(true)
-            setConferenceName(colibriSessionManager.conferenceName)
-            setRtcstatsEnabled(colibriSessionManager.rtcStatsEnabled)
-            transcriberUrl?.let {
-                var url = resolveTranscriberUrl(it)
-                val urlParams = transcriberUrlParams
-                if (urlParams != null && urlParams.isNotEmpty()) {
-                    val queryString = urlParams.entries.joinToString("&") { (key, value) ->
-                        "${java.net.URLEncoder.encode(key, "UTF-8")}=${java.net.URLEncoder.encode(value, "UTF-8")}"
-                    }
-                    val separator = if (url.query == null) "?" else "&"
-                    url = java.net.URI(url.toString() + separator + queryString)
-                }
-                val headers = transcriberCustomHeaders ?: TranscriptionConfig.config.httpHeaders
-                logger.info("Adding connect for transcriber, url=$url")
-                addConnect(
-                    createConnect(
-                        url,
-                        headers,
-                        TranscriptionConfig.config.pingEnabled,
-                        TranscriptionConfig.config.pingInterval.toMillis().toInt(),
-                        TranscriptionConfig.config.pingTimeout.toMillis().toInt()
+    private fun createRequest(create: Boolean = false, context: Context = Context.root()) =
+        ConferenceModifyIQ.builder(xmppConnection).apply {
+            val span = Span.fromContextOrNull(context)
+            if (span != null) {
+                addExtension(
+                    TraceParent(
+                        span.spanContext.traceId,
+                        span.spanContext.spanId,
                     )
                 )
             }
+            to(bridge.jid)
+            setMeetingId(colibriSessionManager.meetingId)
+            if (create) {
+                setCreate(true)
+                setConferenceName(colibriSessionManager.conferenceName)
+                setRtcstatsEnabled(colibriSessionManager.rtcStatsEnabled)
+                transcriberUrl?.let {
+                    var url = resolveTranscriberUrl(it)
+                    val urlParams = transcriberUrlParams
+                    if (urlParams != null && urlParams.isNotEmpty()) {
+                        val queryString = urlParams.entries.joinToString("&") { (key, value) ->
+                            "${java.net.URLEncoder.encode(key, "UTF-8")}=${java.net.URLEncoder.encode(value, "UTF-8")}"
+                        }
+                        val separator = if (url.query == null) "?" else "&"
+                        url = java.net.URI(url.toString() + separator + queryString)
+                    }
+                    val headers = transcriberCustomHeaders ?: TranscriptionConfig.config.httpHeaders
+                    logger.info("Adding connect for transcriber, url=$url")
+                    addConnect(
+                        createConnect(
+                            url,
+                            headers,
+                            TranscriptionConfig.config.pingEnabled,
+                            TranscriptionConfig.config.pingInterval.toMillis().toInt(),
+                            TranscriptionConfig.config.pingTimeout.toMillis().toInt()
+                        )
+                    )
+                }
+            }
         }
-    }
 
     private fun resolveTranscriberUrl(urlTemplate: TemplatedUrl): URI {
         return urlTemplate.resolve(TranscriptionConfig.REGION_TEMPLATE, bridge.region ?: "")
