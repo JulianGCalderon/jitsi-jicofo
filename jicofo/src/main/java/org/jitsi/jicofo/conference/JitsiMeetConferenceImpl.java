@@ -440,7 +440,7 @@ public class JitsiMeetConferenceImpl
         {
             try
             {
-                stop();
+                stop(Context.root());
             }
             catch (Exception x)
             {
@@ -455,7 +455,7 @@ public class JitsiMeetConferenceImpl
      * Stops the conference, disposes colibri channels and releases all
      * resources used by the focus.
      */
-    public void stop()
+    public void stop(Context context)
     {
         if (!started.compareAndSet(true, false))
         {
@@ -500,7 +500,7 @@ public class JitsiMeetConferenceImpl
 
         try
         {
-            expireBridgeSessions();
+            expireBridgeSessions(context);
         }
         catch (Exception e)
         {
@@ -1050,7 +1050,7 @@ public class JitsiMeetConferenceImpl
     /**
      * Expires all COLIBRI conferences.
      */
-    private void expireBridgeSessions()
+    private void expireBridgeSessions(Context context)
     {
         // If the conference is being disposed the timeout is not needed
         // anymore
@@ -1058,7 +1058,7 @@ public class JitsiMeetConferenceImpl
 
         if (colibriSessionManager != null)
         {
-            colibriSessionManager.expire();
+            colibriSessionManager.expire(context);
         }
     }
 
@@ -1074,6 +1074,22 @@ public class JitsiMeetConferenceImpl
 
     private void onMemberLeft(ChatRoomMember chatRoomMember)
     {
+        Span span = tracer.spanBuilder("muc.member-left")
+                .setAttribute("member.name", chatRoomMember.getName())
+                .setAttribute("member.id", Objects.toString(chatRoomMember.getJid()))
+                .setAttribute("member.role", chatRoomMember.getRole().toString())
+                .setAttribute("member.region", StringUtils.defaultString(chatRoomMember.getRegion()))
+                .setAttribute("member.stats-id", Objects.toString(chatRoomMember.getStatsId()))
+                .setAttribute("member.audioMuted", chatRoomMember.isAudioMuted())
+                .setAttribute("member.videoMuted", chatRoomMember.isVideoMuted())
+                .setAttribute("member.isJibri", chatRoomMember.isJibri())
+                .setAttribute("member.isJigasi", chatRoomMember.isJigasi())
+                .setAttribute("member.isTranscriber", chatRoomMember.isTranscriber())
+                .setAttribute("room.id", chatRoomMember.getChatRoom().getRoomJid().toString())
+                .startSpan();
+        Context context = span.storeInContext(Context.root());
+        try
+        {
         synchronized (participantLock)
         {
             logger.info("Member left:" + chatRoomMember.getName());
@@ -1088,7 +1104,8 @@ public class JitsiMeetConferenceImpl
                         null,
                         /* no need to send session-terminate - gone */ false,
                         /* no need to send source-remove */ false,
-                        /* not reinviting */ false);
+                        /* not reinviting */ false,
+                        context);
             }
             else
             {
@@ -1102,11 +1119,16 @@ public class JitsiMeetConferenceImpl
             }
             else if (participants.isEmpty())
             {
-                expireBridgeSessions();
+                expireBridgeSessions(context);
             }
         }
 
         maybeStop(chatRoomMember);
+        }
+        finally
+        {
+        span.end();
+        }
     }
 
     /**
@@ -1132,7 +1154,7 @@ public class JitsiMeetConferenceImpl
             else
             {
                 logger.info("Last member left, stopping.");
-                stop();
+                stop(Context.root());
             }
         }
     }
@@ -1151,7 +1173,8 @@ public class JitsiMeetConferenceImpl
             String message,
             boolean sendSessionTerminate,
             boolean sendSourceRemove,
-            boolean willReinvite)
+            boolean willReinvite,
+            Context context)
     {
         logger.info(String.format(
                 "Terminating %s, reason: %s, send session-terminate: %s",
@@ -1182,7 +1205,7 @@ public class JitsiMeetConferenceImpl
             }
         }
 
-        getColibriSessionManager().removeParticipant(participant.getEndpointId());
+        getColibriSessionManager().removeParticipant(participant.getEndpointId(), context);
     }
 
     @Override
@@ -1214,7 +1237,7 @@ public class JitsiMeetConferenceImpl
 
                 // This is a connect without resumption, so make sure we fix the state, by stopping
                 // all clients will reload the state will be fine when they invite us again.
-                stop();
+                stop(Context.root());
             }
         }
         else
@@ -1227,13 +1250,13 @@ public class JitsiMeetConferenceImpl
             {
                 logger.info("XMPP will wait for a reconnect.");
                 reconnectTimeout = TaskPools.getScheduledPool().schedule(
-                        this::stop,
+                        () -> stop(Context.root()),
                         XmppConfig.client.getReplyTimeout().toMillis(),
                         TimeUnit.MILLISECONDS);
             }
             else
             {
-                stop();
+                stop(Context.root());
             }
         }
     }
@@ -1329,7 +1352,8 @@ public class JitsiMeetConferenceImpl
                     (reinvite) ? "reinvite requested" : null,
                     /* do not send session-terminate */ false,
                     /* do send source-remove */ true,
-                    reinvite);
+                    reinvite,
+                    Context.root());
 
             if (reinvite)
             {
@@ -1902,7 +1926,7 @@ public class JitsiMeetConferenceImpl
             return false;
         }
 
-        colibriSessionManager.removeParticipant(endpointId);
+        colibriSessionManager.removeParticipant(endpointId, Context.root());
         return reInviteParticipantsById(Collections.singletonList(endpointId)) == 1;
     }
 
@@ -1919,7 +1943,7 @@ public class JitsiMeetConferenceImpl
                 = colibriSessionManager.getParticipants(bridge).stream().limit(numEps).collect(Collectors.toList());
         for (String participantId : participantIds)
         {
-            colibriSessionManager.removeParticipant(participantId);
+            colibriSessionManager.removeParticipant(participantId, Context.root());
         }
         return reInviteParticipantsById(participantIds);
     }
@@ -2176,7 +2200,8 @@ public class JitsiMeetConferenceImpl
                 "jingle session failed",
                 /* send session-terminate */ true,
                 /* send source-remove */ true,
-                /* not reinviting */ false);
+                /* not reinviting */ false,
+                Context.root());
     }
 
     /**
@@ -2326,7 +2351,7 @@ public class JitsiMeetConferenceImpl
                             return;
                         }
 
-                        stop();
+                        stop(Context.root());
                     },
                     ConferenceConfig.config.getConferenceStartTimeout().toMillis(),
                     TimeUnit.MILLISECONDS);
@@ -2528,6 +2553,8 @@ public class JitsiMeetConferenceImpl
         @Override
         public void run()
         {
+
+
             synchronized (participantLock)
             {
                 if (participants.size() == 1)
@@ -2535,15 +2562,28 @@ public class JitsiMeetConferenceImpl
                     Participant p = participants.values().stream().findFirst().orElse(null);
                     logger.info("Timing out single participant: " + p.getChatMember().getName());
 
+                    Span span = tracer.spanBuilder("conference.timeout")
+                        .setAttribute("member.name", p.getChatMember().getName())
+                        .setAttribute("member.id", Objects.toString(p.getChatMember().getJid()))
+                        .setAttribute("member.role", p.getChatMember().getRole().toString())
+                        .setAttribute("member.region", StringUtils.defaultString(p.getChatMember().getRegion()))
+                        .setAttribute("member.stats-id", Objects.toString(p.getChatMember().getStatsId()))
+                        .setAttribute("member.audioMuted", p.getChatMember().isAudioMuted())
+                        .setAttribute("member.videoMuted", p.getChatMember().isVideoMuted())
+                        .setAttribute("room.id", p.getChatMember().getChatRoom().getRoomJid().toString())
+                        .startSpan();
+                    Context context = span.storeInContext(Context.root());
                     terminateParticipant(
                             p,
                             Reason.EXPIRED,
                             "Idle session timeout",
                             /* send session-terminate */ true,
                             /* send source-remove */ false,
-                            /* not reinviting */ false);
+                            /* not reinviting */ false,
+                            context);
 
-                    expireBridgeSessions();
+                    expireBridgeSessions(Context.root());
+                    span.end();
                 }
                 else
                 {
@@ -2700,8 +2740,14 @@ public class JitsiMeetConferenceImpl
         @Override
         public void roomDestroyed(String reason)
         {
+            Span span = tracer.spanBuilder("conference.room-destroyed")
+                    .setAttribute("room.id", chatRoom.getRoomJid().toString())
+                    .setAttribute("reason", (reason != null) ? reason : "")
+                    .startSpan();
+            Context context = span.storeInContext(Context.root());
             logger.info("Room destroyed with reason=" + reason);
-            stop();
+            stop(context);
+            span.end();
         }
 
         @Override
@@ -2738,7 +2784,7 @@ public class JitsiMeetConferenceImpl
             {
                 logger.warn(
                     "Stopping, because the local role changed to " + newRole + " (owner privileges are required).");
-                stop();
+                stop(Context.root());
             }
         }
 

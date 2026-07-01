@@ -193,9 +193,9 @@ class Colibri2Session(
     }
 
     /** Expire the entire conference. */
-    internal fun expire() {
+    internal fun expire(context: Context = Context.root()) {
         relays.clear()
-        val request = createRequest().setExpire(true)
+        val request = createRequest(context = context).setExpire(true)
         sendRequest(request.build(), "expire")
     }
 
@@ -203,12 +203,12 @@ class Colibri2Session(
     internal fun expire(participantToExpire: ParticipantInfo) = expire(singletonList(participantToExpire))
 
     /** Expire the colibri2 endpoints for a set of participants. */
-    internal fun expire(participantsToExpire: List<ParticipantInfo>) {
+    internal fun expire(participantsToExpire: List<ParticipantInfo>, context: Context = Context.root()) {
         if (participantsToExpire.isEmpty()) {
             logger.debug { "No participants to expire." }
             return
         }
-        val request = createRequest()
+        val request = createRequest(context = context)
         participantsToExpire.forEach { request.addExpire(it.id) }
 
         logger.debug { "Expiring endpoint: ${participantsToExpire.map { it.id }}" }

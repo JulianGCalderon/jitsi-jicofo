@@ -258,7 +258,7 @@ public class ParticipantInviteRunnable implements Runnable, Cancelable
         catch (SmackException.NotConnectedException e)
         {
             logger.error("Failed to invite participant: ", e);
-            colibriSessionManager.removeParticipant(participant.getEndpointId());
+            colibriSessionManager.removeParticipant(participant.getEndpointId(), context);
             cancel();
         }
     }

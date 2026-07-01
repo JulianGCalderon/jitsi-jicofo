@@ -33,10 +33,10 @@ interface ColibriSessionManager {
     fun removeListener(listener: Listener)
 
     /** Expire all colibri sessions. */
-    fun expire()
+    fun expire(context: Context = Context.root())
 
     /** Remove a participant, expiring all resources allocated for it */
-    fun removeParticipant(participantId: String)
+    fun removeParticipant(participantId: String, context: Context = Context.root())
 
     fun mute(participantId: String, doMute: Boolean, mediaType: MediaType): Boolean =
         mute(setOf(participantId), doMute, mediaType)

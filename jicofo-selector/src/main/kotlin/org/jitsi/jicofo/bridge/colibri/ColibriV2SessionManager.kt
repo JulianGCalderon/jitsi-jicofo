@@ -121,24 +121,24 @@ class ColibriV2SessionManager(
     /**
      * Expire everything.
      */
-    override fun expire() = synchronized(syncRoot) {
+    override fun expire(context: Context) = synchronized(syncRoot) {
         logger.info("Expiring.")
         sessions.values.forEach { session ->
             logger.debug { "Expiring $session" }
             session.bridge.endpointsRemoved(getSessionParticipants(session).size)
-            session.expire()
+            session.expire(context)
         }
         sessions.clear()
         eventEmitter.fireEvent { bridgeCountChanged(0) }
         clear()
     }
 
-    override fun removeParticipant(participantId: String) = synchronized(syncRoot) {
+    override fun removeParticipant(participantId: String, context: Context) = synchronized(syncRoot) {
         logger.debug { "Asked to remove $participantId" }
 
         participants[participantId]?.let {
             logger.debug("Removing ${it.id}")
-            removeParticipantInfosBySession(mapOf(it.session to singletonList(it)))
+            removeParticipantInfosBySession(mapOf(it.session to singletonList(it)), context)
         } ?: logger.warn("Can not remove $participantId, no participantInfo")
         Unit
     }
@@ -146,10 +146,10 @@ class ColibriV2SessionManager(
     private fun repairMesh(cascade: ColibriV2SessionManager, disconnectedMeshes: Set<Set<Colibri2Session>>) =
         config.topologyStrategy.repairMesh(cascade, disconnectedMeshes)
 
-    private fun removeSession(session: Colibri2Session): Set<ParticipantInfo> {
+    private fun removeSession(session: Colibri2Session, context: Context = Context.root()): Set<ParticipantInfo> {
         val participants = getSessionParticipants(session)
         session.bridge.endpointsRemoved(participants.size)
-        session.expire()
+        session.expire(context)
         removeNode(session, ::repairMesh)
         sessions.remove(session.relayId)
         participantsBySession.remove(session)
@@ -173,7 +173,8 @@ class ColibriV2SessionManager(
     }
 
     private fun removeParticipantInfosBySession(
-        bySession: Map<Colibri2Session, List<ParticipantInfo>>
+        bySession: Map<Colibri2Session, List<ParticipantInfo>>,
+        context: Context = Context.root()
     ): Set<ParticipantInfo> {
         var sessionRemoved = false
         val participantsRemoved = mutableSetOf<ParticipantInfo>()
@@ -183,12 +184,12 @@ class ColibriV2SessionManager(
             val removeSession = remaining.isEmpty()
             if (removeSession) {
                 logger.info("Removing session with no remaining participants: $session")
-                val sessionParticipantsRemoved = removeSession(session)
+                val sessionParticipantsRemoved = removeSession(session, context)
 
                 participantsRemoved.addAll(sessionParticipantsRemoved)
                 sessionRemoved = true
             } else {
-                session.expire(sessionParticipantsToRemove)
+                session.expire(sessionParticipantsToRemove, context)
                 session.bridge.endpointRemoved()
                 sessionParticipantsToRemove.forEach { remove(it) }
                 participantsRemoved.addAll(sessionParticipantsToRemove)
