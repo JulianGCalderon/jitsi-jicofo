@@ -17,6 +17,13 @@
  */
 package org.jitsi.jicofo.xmpp.jingle
 
+import io.opentelemetry.api.trace.Span
+import io.opentelemetry.api.trace.SpanContext
+import io.opentelemetry.api.trace.TraceFlags
+import io.opentelemetry.api.trace.TraceState
+import io.opentelemetry.api.trace.Tracer
+import io.opentelemetry.context.Context
+import org.jitsi.jicofo.GlobalOTel
 import org.jitsi.jicofo.TaskPools
 import org.jitsi.jicofo.conference.source.ConferenceSourceMap
 import org.jitsi.jicofo.xmpp.IqProcessingResult
@@ -28,6 +35,7 @@ import org.jitsi.utils.MediaType
 import org.jitsi.utils.OrderedJsonObject
 import org.jitsi.utils.logging2.createLogger
 import org.jitsi.utils.queue.PacketQueue
+import org.jitsi.xmpp.extensions.TraceParent
 import org.jitsi.xmpp.extensions.jingle.ContentPacketExtension
 import org.jitsi.xmpp.extensions.jingle.GroupPacketExtension
 import org.jitsi.xmpp.extensions.jingle.JingleAction
@@ -42,6 +50,7 @@ import org.jivesoftware.smack.packet.ExtensionElement
 import org.jivesoftware.smack.packet.IQ
 import org.jivesoftware.smack.packet.StanzaError
 import org.jxmpp.jid.Jid
+import java.util.Objects
 
 /**
  * Class describes Jingle session.
@@ -66,6 +75,7 @@ class JingleSession(
         addContext("remoteJid", remoteJid.toString())
         addContext("sid", sid)
     }
+    val tracer: Tracer = GlobalOTel.sdk.getTracer("org.jitsi.jicofo.xmpp.jingle")
 
     private val incomingIqQueue = PacketQueue<JingleIQ>(
         Integer.MAX_VALUE,
@@ -105,12 +115,38 @@ class JingleSession(
     }
 
     private fun doProcessIq(iq: JingleIQ) {
+        val traceParent = iq.getExtension(TraceParent::class.java)
+        var context = if (traceParent != null) {
+            Context.root().with(
+                Span.wrap(
+                    SpanContext.createFromRemoteParent(
+                        traceParent.traceId,
+                        traceParent.parentId,
+                        TraceFlags.getSampled(),
+                        TraceState.getDefault(),
+                    )
+                )
+            )
+        } else {
+            Context.root()
+        }
+        val span = tracer.spanBuilder("jingle.${iq.action}")
+            .setParent(context)
+            .setAttribute("sessionId", iq.sid)
+            .setAttribute("action", Objects.toString(iq.action))
+            .setAttribute("initiator", Objects.toString(iq.initiator))
+            .setAttribute("responder", Objects.toString(iq.responder))
+            .setAttribute("reason", Objects.toString(iq.reason))
+            .setAttribute("sessionInfo.type", Objects.toString(iq.sessionInfo?.type))
+            .startSpan()
+        context = span.storeInContext(context)
+
         val error = when (iq.action) {
             JingleAction.SESSION_ACCEPT -> {
                 // The session needs to be marked as active early to allow code executing as part of onSessionAccept
                 // to proceed (e.g. to signal source updates).
                 state = State.ACTIVE
-                val error = requestHandler.onSessionAccept(this, iq.contentList)
+                val error = requestHandler.onSessionAccept(this, iq.contentList, context)
                 if (error != null) state = State.ENDED
                 error
             }
@@ -120,7 +156,7 @@ class JingleSession(
                 state = State.ENDED
             }
 
-            JingleAction.TRANSPORT_ACCEPT -> requestHandler.onTransportAccept(this, iq.contentList)
+            JingleAction.TRANSPORT_ACCEPT -> requestHandler.onTransportAccept(this, iq.contentList, context)
             JingleAction.TRANSPORT_INFO -> requestHandler.onTransportInfo(this, iq.contentList)
             JingleAction.TRANSPORT_REJECT -> {
                 requestHandler.onTransportReject(this, iq)
@@ -147,6 +183,7 @@ class JingleSession(
             IQ.createErrorResponse(iq, error)
         }
         connection.tryToSendStanza(response)
+        span.end()
     }
 
     fun terminate(
@@ -188,8 +225,19 @@ class JingleSession(
     fun replaceTransport(
         contents: List<ContentPacketExtension>,
         additionalExtensions: List<ExtensionElement>,
-        sources: ConferenceSourceMap
+        sources: ConferenceSourceMap,
+        context: Context = Context.root()
     ): Boolean {
+        val span = tracer.spanBuilder("jingle.replace-transport")
+            .setAttribute("to", remoteJid.toString())
+            .setAttribute("sid", sid)
+            .setAttribute("state", state.toString())
+            .setParent(context)
+            .startSpan()
+        for (sourceSet in sources) {
+            span.setAttribute("endpoint.${sourceSet.key}", sourceSet.value.compactJson)
+        }
+
         logger.info("Sending transport-replace, sources=$sources.")
         if (state != State.ACTIVE) logger.error("Sending transport-replace for session in state $state")
 
@@ -204,12 +252,14 @@ class JingleSession(
 
         JingleStats.stanzaSent(jingleIq.action)
         val response = connection.sendIqAndGetResponse(jingleIq)
-        return if (response?.type == IQ.Type.result) {
+        val ret = if (response?.type == IQ.Type.result) {
             true
         } else {
             logger.error("Unexpected response to transport-replace: ${response?.toXML()}")
             false
         }
+        span.end()
+        return ret
     }
 
     /**
@@ -248,7 +298,18 @@ class JingleSession(
         contents: List<ContentPacketExtension>,
         additionalExtensions: List<ExtensionElement>,
         sources: ConferenceSourceMap,
+        context: Context = Context.root(),
     ): Boolean {
+        val span = tracer.spanBuilder("jingle.initiate-session")
+            .setAttribute("to", remoteJid.toString())
+            .setAttribute("sid", sid)
+            .setAttribute("state", state.toString())
+            .setParent(context)
+            .startSpan()
+        for (sourceSet in sources) {
+            span.setAttribute("endpoint.${sourceSet.key}", sourceSet.value.compactJson)
+        }
+
         if (state != State.PENDING) logger.error("Sending session-initiate for session in state $state")
         val contentsWithSources = if (encodeSourcesAsJson) contents else sources.toContents(contents)
         val sessionInitiate = createSessionInitiate(localJid, remoteJid, sid, contentsWithSources).apply {
@@ -257,6 +318,7 @@ class JingleSession(
             if (encodeSourcesAsJson) {
                 addExtension(sources.toJsonMessageExtension())
             }
+            addExtension(TraceParent(span.spanContext.traceId, span.spanContext.spanId))
         }
 
         jingleIqRequestHandler.registerSession(this)
@@ -264,12 +326,14 @@ class JingleSession(
         val response = connection.sendIqAndGetResponse(sessionInitiate)
         // We treat a timeout (null) as success. This prevents failures in case the client delays processing, observed
         // when joining a large conference. The session will be pending until we receive session-accept.
-        return if (response == null || response.type == IQ.Type.result) {
+        val ret = if (response == null || response.type == IQ.Type.result) {
             true
         } else {
             logger.error("Unexpected response to session-initiate: $response")
             false
         }
+        span.end()
+        return ret
     }
 
     private fun createAddSourceIq(sources: ConferenceSourceMap) = JingleIQ(JingleAction.SOURCEADD, sid).apply {

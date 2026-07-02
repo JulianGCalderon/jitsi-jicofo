@@ -19,6 +19,9 @@
 package org.jitsi.jicofo.bridge.colibri
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings
+import io.opentelemetry.api.trace.Tracer
+import io.opentelemetry.context.Context
+import org.jitsi.jicofo.GlobalOTel.sdk
 import org.jitsi.jicofo.MediaType
 import org.jitsi.jicofo.OctoConfig
 import org.jitsi.jicofo.TaskPools
@@ -52,6 +55,7 @@ import org.jivesoftware.smack.packet.StanzaError.Condition.item_not_found
 import org.jivesoftware.smack.packet.StanzaError.Condition.service_unavailable
 import org.json.simple.JSONArray
 import java.util.Collections.singletonList
+import java.util.Objects
 
 /**
  * Implements [ColibriSessionManager] using colibri2.
@@ -71,6 +75,7 @@ class ColibriV2SessionManager(
     parentLogger: Logger
 ) : ColibriSessionManager, Cascade<Colibri2Session, Colibri2Session.Relay> {
     private val logger = createChildLogger(parentLogger)
+    private val tracer: Tracer = sdk.getTracer("org.jitsi.jicofo.colibri")
 
     private val eventEmitter = AsyncEventEmitter<ColibriSessionManager.Listener>(TaskPools.ioPool)
     override fun addListener(listener: ColibriSessionManager.Listener) = eventEmitter.addHandler(listener)
@@ -116,24 +121,24 @@ class ColibriV2SessionManager(
     /**
      * Expire everything.
      */
-    override fun expire() = synchronized(syncRoot) {
+    override fun expire(context: Context) = synchronized(syncRoot) {
         logger.info("Expiring.")
         sessions.values.forEach { session ->
             logger.debug { "Expiring $session" }
             session.bridge.endpointsRemoved(getSessionParticipants(session).size)
-            session.expire()
+            session.expire(context)
         }
         sessions.clear()
         eventEmitter.fireEvent { bridgeCountChanged(0) }
         clear()
     }
 
-    override fun removeParticipant(participantId: String) = synchronized(syncRoot) {
+    override fun removeParticipant(participantId: String, context: Context) = synchronized(syncRoot) {
         logger.debug { "Asked to remove $participantId" }
 
         participants[participantId]?.let {
             logger.debug("Removing ${it.id}")
-            removeParticipantInfosBySession(mapOf(it.session to singletonList(it)))
+            removeParticipantInfosBySession(mapOf(it.session to singletonList(it)), context)
         } ?: logger.warn("Can not remove $participantId, no participantInfo")
         Unit
     }
@@ -141,10 +146,10 @@ class ColibriV2SessionManager(
     private fun repairMesh(cascade: ColibriV2SessionManager, disconnectedMeshes: Set<Set<Colibri2Session>>) =
         config.topologyStrategy.repairMesh(cascade, disconnectedMeshes)
 
-    private fun removeSession(session: Colibri2Session): Set<ParticipantInfo> {
+    private fun removeSession(session: Colibri2Session, context: Context = Context.root()): Set<ParticipantInfo> {
         val participants = getSessionParticipants(session)
         session.bridge.endpointsRemoved(participants.size)
-        session.expire()
+        session.expire(context)
         removeNode(session, ::repairMesh)
         sessions.remove(session.relayId)
         participantsBySession.remove(session)
@@ -168,7 +173,8 @@ class ColibriV2SessionManager(
     }
 
     private fun removeParticipantInfosBySession(
-        bySession: Map<Colibri2Session, List<ParticipantInfo>>
+        bySession: Map<Colibri2Session, List<ParticipantInfo>>,
+        context: Context = Context.root()
     ): Set<ParticipantInfo> {
         var sessionRemoved = false
         val participantsRemoved = mutableSetOf<ParticipantInfo>()
@@ -178,12 +184,12 @@ class ColibriV2SessionManager(
             val removeSession = remaining.isEmpty()
             if (removeSession) {
                 logger.info("Removing session with no remaining participants: $session")
-                val sessionParticipantsRemoved = removeSession(session)
+                val sessionParticipantsRemoved = removeSession(session, context)
 
                 participantsRemoved.addAll(sessionParticipantsRemoved)
                 sessionRemoved = true
             } else {
-                session.expire(sessionParticipantsToRemove)
+                session.expire(sessionParticipantsToRemove, context)
                 session.bridge.endpointRemoved()
                 sessionParticipantsToRemove.forEach { remove(it) }
                 participantsRemoved.addAll(sessionParticipantsToRemove)
@@ -353,137 +359,154 @@ class ColibriV2SessionManager(
     }
 
     @Throws(ColibriAllocationFailedException::class, BridgeSelectionFailedException::class)
-    override fun allocate(participant: ParticipantAllocationParameters): ColibriAllocation {
-        logger.info("Allocating for ${participant.id}")
-        val stanzaCollector: StanzaCollector
-        val session: Colibri2Session
-        val created: Boolean
-        val participantInfo: ParticipantInfo
-        synchronized(syncRoot) {
-            if (participants.containsKey(participant.id)) {
-                throw IllegalStateException("participant already exists")
-            }
+    override fun allocate(participant: ParticipantAllocationParameters, context: Context): ColibriAllocation {
+        val span = tracer.spanBuilder("colibri.allocate")
+            .setAttribute("participant.id", participant.id)
+            .setAttribute("participant.region", Objects.toString(participant.region))
+            .setParent(context)
+            .startSpan()
+        val context = span.storeInContext(context)
+        try {
+            logger.info("Allocating for ${participant.id}")
+            val stanzaCollector: StanzaCollector
+            val session: Colibri2Session
+            val created: Boolean
+            val participantInfo: ParticipantInfo
+            synchronized(syncRoot) {
+                if (participants.containsKey(participant.id)) {
+                    throw IllegalStateException("participant already exists")
+                }
 
-            if (bridgeVersion != null) {
-                logger.info("Selecting bridge. Conference is pinned to version \"$bridgeVersion\"")
-            }
+                if (bridgeVersion != null) {
+                    logger.info("Selecting bridge. Conference is pinned to version \"$bridgeVersion\"")
+                }
 
-            val visitor = participant.visitor
+                val visitor = participant.visitor
 
-            // The requests for each session need to be sent in order, but we don't want to hold the lock while
-            // waiting for a response. I am not sure if processing responses is guaranteed to be in the order in which
-            // the requests were sent.
-            val bridge = bridgeSelector.selectBridge(
-                getBridges(),
-                ParticipantProperties(participant.region, visitor),
-                bridgeVersion
-            ) ?: run {
-                eventEmitter.fireEvent { bridgeSelectionFailed() }
-                throw BridgeSelectionFailedException()
-            }
-            eventEmitter.fireEvent { bridgeSelectionSucceeded() }
-            if (sessions.isNotEmpty() && sessions.none { it.value.bridge == bridge }) {
-                // There is an existing session, and this is a new bridge.
-                if (!OctoConfig.config.enabled) {
-                    logger.error("A new bridge was selected, but Octo is disabled")
-                    // This is a bridge selection failure, because the selector should not have returned a different
-                    // bridge when Octo is not enabled.
-                    throw BridgeSelectionFailedException()
-                } else if (sessions.any { it.value.relayId == null } || bridge.relayId == null) {
-                    logger.error("Can not enable Octo: one of the selected bridges does not support Octo.")
-                    // This is a bridge selection failure, because the selector should not have returned a different
-                    // bridge when one of the bridges doesn't support Octo (does not have a relay ID).
+                // The requests for each session need to be sent in order, but we don't want to hold the lock while
+                // waiting for a response. I am not sure if processing responses is guaranteed to be in the order in which
+                // the requests were sent.
+                val bridge = bridgeSelector.selectBridge(
+                    getBridges(),
+                    ParticipantProperties(participant.region, visitor),
+                    bridgeVersion
+                ) ?: run {
+                    eventEmitter.fireEvent { bridgeSelectionFailed() }
                     throw BridgeSelectionFailedException()
                 }
-            }
-            getOrCreateSession(bridge, visitor).let {
-                session = it.first
-                created = it.second
-            }
-            logger.info(
-                "Selected ${bridge.jid.resourceOrNull} for ${participant.id} " +
-                    "(visitor=${participant.visitor}, session exists: ${!created})"
-            )
-            if (visitor != session.visitor) {
-                // Can happen if we're out of bridges for the specific class
-                logger.warn(
-                    "Session $session with visitor=${session.visitor} chosen for participant with visitor=$visitor"
+                eventEmitter.fireEvent { bridgeSelectionSucceeded() }
+                if (sessions.isNotEmpty() && sessions.none { it.value.bridge == bridge }) {
+                    // There is an existing session, and this is a new bridge.
+                    if (!OctoConfig.config.enabled) {
+                        logger.error("A new bridge was selected, but Octo is disabled")
+                        // This is a bridge selection failure, because the selector should not have returned a different
+                        // bridge when Octo is not enabled.
+                        throw BridgeSelectionFailedException()
+                    } else if (sessions.any { it.value.relayId == null } || bridge.relayId == null) {
+                        logger.error("Can not enable Octo: one of the selected bridges does not support Octo.")
+                        // This is a bridge selection failure, because the selector should not have returned a different
+                        // bridge when one of the bridges doesn't support Octo (does not have a relay ID).
+                        throw BridgeSelectionFailedException()
+                    }
+                }
+                getOrCreateSession(bridge, visitor).let {
+                    session = it.first
+                    created = it.second
+                }
+                logger.info(
+                    "Selected ${bridge.jid.resourceOrNull} for ${participant.id} " +
+                        "(visitor=${participant.visitor}, session exists: ${!created})"
                 )
-            }
-            participantInfo = ParticipantInfo(participant, session)
-            session.bridge.endpointAdded()
-            stanzaCollector = session.sendAllocationRequest(participantInfo)
-            add(participantInfo)
-            if (created) {
-                val topologySelectionResult = config.topologyStrategy.connectNode(
-                    this,
-                    session
-                )
-                addNodeToMesh(session, topologySelectionResult.meshId, topologySelectionResult.existingNode)
-            } else {
-                if (!participantInfo.visitor) {
-                    getPathsFrom(session) { _, otherSession, from ->
-                        if (from != null) {
-                            logger.debug {
-                                "Adding a relayed endpoint to $otherSession for ${participantInfo.id} " +
-                                    "from ${from.relayId}."
+                if (visitor != session.visitor) {
+                    // Can happen if we're out of bridges for the specific class
+                    logger.warn(
+                        "Session $session with visitor=${session.visitor} chosen for participant with visitor=$visitor"
+                    )
+                }
+                participantInfo = ParticipantInfo(participant, session)
+                session.bridge.endpointAdded()
+                stanzaCollector = session.sendAllocationRequest(participantInfo, context)
+                add(participantInfo)
+                if (created) {
+                    val topologySelectionResult = config.topologyStrategy.connectNode(
+                        this,
+                        session
+                    )
+                    addNodeToMesh(session, topologySelectionResult.meshId, topologySelectionResult.existingNode)
+                } else {
+                    if (!participantInfo.visitor) {
+                        getPathsFrom(session) { _, otherSession, from ->
+                            if (from != null) {
+                                logger.debug {
+                                    "Adding a relayed endpoint to $otherSession for ${participantInfo.id} " +
+                                        "from ${from.relayId}."
+                                }
+                                // We already made sure that relayId is not null when there are multiple sessions.
+                                otherSession.updateRemoteParticipant(participantInfo, from.relayId!!, create = true)
                             }
-                            // We already made sure that relayId is not null when there are multiple sessions.
-                            otherSession.updateRemoteParticipant(participantInfo, from.relayId!!, create = true)
                         }
                     }
                 }
             }
-        }
 
-        if (created) {
-            eventEmitter.fireEvent { bridgeCountChanged(sessions.size) }
-        }
-
-        val response: IQ?
-        try {
-            response = stanzaCollector.nextResult()
-            logger.trace { "Received response: ${response?.toXML()}" }
-        } finally {
-            stanzaCollector.cancel()
-        }
-
-        synchronized(syncRoot) {
-            // We may have already removed the session and/or participant, for example due to a previous failure. In
-            // that case we shouldn't act on this error (hence removeBridge=false).
-            if (!sessions.containsValue(session)) {
-                logger.info("Ignoring response for a session that's no longer active (bridge=${session.bridge.jid})")
-                throw ColibriAllocationFailedException(
-                    "Session no longer active (bridge=${session.bridge.jid})",
-                    removeBridge = false
-                )
+            if (created) {
+                eventEmitter.fireEvent { bridgeCountChanged(sessions.size) }
             }
-            if (!participants.containsValue(participantInfo)) {
-                logger.info("Ignoring response for a participant that's no longer active: ${participantInfo.id}")
-                throw ColibriAllocationFailedException(
-                    "Participant no longer active: ${participantInfo.id}",
-                    removeBridge = false
-                )
-            }
+
+            val response: IQ?
             try {
-                return handleResponse(response, session, created, participantInfo)
-            } catch (e: Exception) {
-                if (e is ConferenceAlreadyExistsException) {
-                    logger.warn("Failed to allocate a colibri2 endpoint for ${participantInfo.id}: ${e.message}")
-                } else {
-                    logger.error("Failed to allocate a colibri2 endpoint for ${participantInfo.id}: ${e.message}")
-                }
-
-                if (e is ColibriAllocationFailedException && e.removeBridge) {
-                    // Add participantInfo just in case it wasn't there already (the set will take care of dups).
-                    val removedParticipants = removeSession(session) + participantInfo
-                    remove(participantInfo)
-                    eventEmitter.fireEvent { bridgeRemoved(session.bridge, removedParticipants.map { it.id }.toList()) }
-                } else {
-                    remove(participantInfo)
-                }
-                throw e
+                response = stanzaCollector.nextResult()
+                logger.trace { "Received response: ${response?.toXML()}" }
+            } finally {
+                stanzaCollector.cancel()
             }
+
+            synchronized(syncRoot) {
+                // We may have already removed the session and/or participant, for example due to a previous failure. In
+                // that case we shouldn't act on this error (hence removeBridge=false).
+                if (!sessions.containsValue(session)) {
+                    logger.info(
+                        "Ignoring response for a session that's no longer active (bridge=${session.bridge.jid})"
+                    )
+                    throw ColibriAllocationFailedException(
+                        "Session no longer active (bridge=${session.bridge.jid})",
+                        removeBridge = false
+                    )
+                }
+                if (!participants.containsValue(participantInfo)) {
+                    logger.info("Ignoring response for a participant that's no longer active: ${participantInfo.id}")
+                    throw ColibriAllocationFailedException(
+                        "Participant no longer active: ${participantInfo.id}",
+                        removeBridge = false
+                    )
+                }
+                try {
+                    return handleResponse(response, session, created, participantInfo)
+                } catch (e: Exception) {
+                    if (e is ConferenceAlreadyExistsException) {
+                        logger.warn("Failed to allocate a colibri2 endpoint for ${participantInfo.id}: ${e.message}")
+                    } else {
+                        logger.error("Failed to allocate a colibri2 endpoint for ${participantInfo.id}: ${e.message}")
+                    }
+
+                    if (e is ColibriAllocationFailedException && e.removeBridge) {
+                        // Add participantInfo just in case it wasn't there already (the set will take care of dups).
+                        val removedParticipants = removeSession(session) + participantInfo
+                        remove(participantInfo)
+                        eventEmitter.fireEvent {
+                            bridgeRemoved(
+                                session.bridge,
+                                removedParticipants.map { it.id }.toList()
+                            )
+                        }
+                    } else {
+                        remove(participantInfo)
+                    }
+                    throw e
+                }
+            }
+        } finally {
+            span.end()
         }
     }
 
@@ -632,7 +655,8 @@ class ColibriV2SessionManager(
         transport: IceUdpTransportPacketExtension?,
         sources: EndpointSourceSet?,
         initialLastN: InitialLastN?,
-        suppressLocalBridgeUpdate: Boolean
+        suppressLocalBridgeUpdate: Boolean,
+        context: Context,
     ) = synchronized(syncRoot) {
         logger.debug("Updating $participantId with transport=$transport, sources=$sources")
 
@@ -644,7 +668,7 @@ class ColibriV2SessionManager(
                 return
             }
         if (!suppressLocalBridgeUpdate) {
-            participantInfo.session.updateParticipant(participantInfo, transport, sources, initialLastN)
+            participantInfo.session.updateParticipant(participantInfo, transport, sources, initialLastN, context)
         }
         if (sources != null) {
             participantInfo.sources = sources

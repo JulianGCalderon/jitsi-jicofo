@@ -23,6 +23,7 @@ import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
+import io.opentelemetry.context.Context
 import org.jitsi.jicofo.bridge.colibri.ColibriAllocation
 import org.jitsi.jicofo.bridge.colibri.ColibriSessionManager
 import org.jitsi.jicofo.bridge.colibri.SSRC_OWNER_JVB
@@ -137,7 +138,8 @@ class ParticipantInviteRunnableTest : ShouldSpec({
                 false,
                 false,
                 false,
-                LoggerImpl("test")
+                LoggerImpl("test"),
+                Context.root(),
             )
 
             context("When the participant ${if (supportsVideo) "supports" else "does not support"} video") {

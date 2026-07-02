@@ -17,6 +17,10 @@
  */
 package org.jitsi.jicofo.conference;
 
+import io.opentelemetry.context.Context;
+import org.apache.commons.lang3.StringUtils;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.Tracer;
 import kotlin.*;
 import org.jetbrains.annotations.*;
 import org.jitsi.jicofo.*;
@@ -79,6 +83,8 @@ import static org.jitsi.jicofo.xmpp.MuteIqHandlerKt.createMuteIq;
 public class JitsiMeetConferenceImpl
     implements JitsiMeetConference, XmppProvider.Listener
 {
+
+    private final Tracer tracer = GlobalOTel.INSTANCE.getSdk().getTracer("org.jitsi.jicofo.conference");
 
     /**
      * Status used by participants when they are switching from a room to a breakout room.
@@ -434,7 +440,7 @@ public class JitsiMeetConferenceImpl
         {
             try
             {
-                stop();
+                stop(Context.root());
             }
             catch (Exception x)
             {
@@ -449,7 +455,7 @@ public class JitsiMeetConferenceImpl
      * Stops the conference, disposes colibri channels and releases all
      * resources used by the focus.
      */
-    public void stop()
+    public void stop(Context context)
     {
         if (!started.compareAndSet(true, false))
         {
@@ -494,7 +500,7 @@ public class JitsiMeetConferenceImpl
 
         try
         {
-            expireBridgeSessions();
+            expireBridgeSessions(context);
         }
         catch (Exception e)
         {
@@ -783,6 +789,22 @@ public class JitsiMeetConferenceImpl
      */
     private void onMemberJoined(@NotNull ChatRoomMember chatRoomMember)
     {
+        Span span = tracer.spanBuilder("muc.member-joined")
+                .setAttribute("member.name", chatRoomMember.getName())
+                .setAttribute("member.id", Objects.toString(chatRoomMember.getJid()))
+                .setAttribute("member.role", chatRoomMember.getRole().toString())
+                .setAttribute("member.region", StringUtils.defaultString(chatRoomMember.getRegion()))
+                .setAttribute("member.stats-id", Objects.toString(chatRoomMember.getStatsId()))
+                .setAttribute("member.audioMuted", chatRoomMember.isAudioMuted())
+                .setAttribute("member.videoMuted", chatRoomMember.isVideoMuted())
+                .setAttribute("member.isJibri", chatRoomMember.isJibri())
+                .setAttribute("member.isJigasi", chatRoomMember.isJigasi())
+                .setAttribute("member.isTranscriber", chatRoomMember.isTranscriber())
+                .setAttribute("room.id", chatRoomMember.getChatRoom().getRoomJid().toString())
+                .startSpan();
+        Context context = span.storeInContext(Context.root());
+        try
+        {
         // Detect a race condition in which this thread runs before EntityCapsManager's async StanzaListener that
         // populates the JID to NodeVerHash cache. If that's the case calling getFeatures() would result in an
         // unnecessary disco#info request being sent. That's not an unrecoverable problem, but just yielding should
@@ -848,21 +870,26 @@ public class JitsiMeetConferenceImpl
 
             if (participants.isEmpty())
             {
-                inviteAllChatMembers();
+                inviteAllChatMembers(context);
             }
             // Only the one who has just joined
             else
             {
-                inviteChatMember(chatRoomMember);
+                inviteChatMember(chatRoomMember, context);
             }
+        }
+        }
+        finally
+        {
+            span.end();
         }
     }
 
-    private void inviteAllChatMembers()
+    private void inviteAllChatMembers(Context context)
     {
         for (final ChatRoomMember member : chatRoom.getMembers())
         {
-            inviteChatMember(member);
+            inviteChatMember(member, context);
         }
         for (final ChatRoom visitorChatRoom: visitorChatRooms.values())
         {
@@ -870,7 +897,7 @@ public class JitsiMeetConferenceImpl
             {
                 if (member.getRole() == MemberRole.VISITOR)
                 {
-                    inviteChatMember(member);
+                    inviteChatMember(member, context);
                 }
             }
         }
@@ -883,7 +910,7 @@ public class JitsiMeetConferenceImpl
      *
      * @param chatRoomMember the chat member to be invited into the conference.
      */
-    private void inviteChatMember(ChatRoomMember chatRoomMember)
+    private void inviteChatMember(ChatRoomMember chatRoomMember, Context context)
     {
         synchronized (participantLock)
         {
@@ -921,7 +948,7 @@ public class JitsiMeetConferenceImpl
                 }
             }
 
-            inviteParticipant(participant, false, true);
+            inviteParticipant(participant, false, true, context);
         }
     }
 
@@ -931,8 +958,11 @@ public class JitsiMeetConferenceImpl
      * a Jingle session with the {@link Participant}.
      * @param participant the participant to invite.
      * @param reInvite whether the participant is to be re-invited or invited for the first time.
+     * @param context
      */
-    private void inviteParticipant(@NotNull Participant participant, boolean reInvite, boolean justJoined)
+    private void inviteParticipant(
+            @NotNull Participant participant, boolean reInvite, boolean justJoined, Context context
+    )
     {
         // Colibri channel allocation and jingle invitation take time, so schedule them on a separate thread.
         ParticipantInviteRunnable channelAllocator = new ParticipantInviteRunnable(
@@ -942,7 +972,8 @@ public class JitsiMeetConferenceImpl
                 hasToStartAudioMuted(justJoined),
                 hasToStartVideoMuted(justJoined),
                 reInvite,
-                logger
+                logger,
+                context
         );
 
         participant.setInviteRunnable(channelAllocator);
@@ -1019,7 +1050,7 @@ public class JitsiMeetConferenceImpl
     /**
      * Expires all COLIBRI conferences.
      */
-    private void expireBridgeSessions()
+    private void expireBridgeSessions(Context context)
     {
         // If the conference is being disposed the timeout is not needed
         // anymore
@@ -1027,7 +1058,7 @@ public class JitsiMeetConferenceImpl
 
         if (colibriSessionManager != null)
         {
-            colibriSessionManager.expire();
+            colibriSessionManager.expire(context);
         }
     }
 
@@ -1043,6 +1074,22 @@ public class JitsiMeetConferenceImpl
 
     private void onMemberLeft(ChatRoomMember chatRoomMember)
     {
+        Span span = tracer.spanBuilder("muc.member-left")
+                .setAttribute("member.name", chatRoomMember.getName())
+                .setAttribute("member.id", Objects.toString(chatRoomMember.getJid()))
+                .setAttribute("member.role", chatRoomMember.getRole().toString())
+                .setAttribute("member.region", StringUtils.defaultString(chatRoomMember.getRegion()))
+                .setAttribute("member.stats-id", Objects.toString(chatRoomMember.getStatsId()))
+                .setAttribute("member.audioMuted", chatRoomMember.isAudioMuted())
+                .setAttribute("member.videoMuted", chatRoomMember.isVideoMuted())
+                .setAttribute("member.isJibri", chatRoomMember.isJibri())
+                .setAttribute("member.isJigasi", chatRoomMember.isJigasi())
+                .setAttribute("member.isTranscriber", chatRoomMember.isTranscriber())
+                .setAttribute("room.id", chatRoomMember.getChatRoom().getRoomJid().toString())
+                .startSpan();
+        Context context = span.storeInContext(Context.root());
+        try
+        {
         synchronized (participantLock)
         {
             logger.info("Member left:" + chatRoomMember.getName());
@@ -1057,7 +1104,8 @@ public class JitsiMeetConferenceImpl
                         null,
                         /* no need to send session-terminate - gone */ false,
                         /* no need to send source-remove */ false,
-                        /* not reinviting */ false);
+                        /* not reinviting */ false,
+                        context);
             }
             else
             {
@@ -1071,11 +1119,16 @@ public class JitsiMeetConferenceImpl
             }
             else if (participants.isEmpty())
             {
-                expireBridgeSessions();
+                expireBridgeSessions(context);
             }
         }
 
         maybeStop(chatRoomMember);
+        }
+        finally
+        {
+        span.end();
+        }
     }
 
     /**
@@ -1101,7 +1154,7 @@ public class JitsiMeetConferenceImpl
             else
             {
                 logger.info("Last member left, stopping.");
-                stop();
+                stop(Context.root());
             }
         }
     }
@@ -1120,7 +1173,8 @@ public class JitsiMeetConferenceImpl
             String message,
             boolean sendSessionTerminate,
             boolean sendSourceRemove,
-            boolean willReinvite)
+            boolean willReinvite,
+            Context context)
     {
         logger.info(String.format(
                 "Terminating %s, reason: %s, send session-terminate: %s",
@@ -1151,7 +1205,7 @@ public class JitsiMeetConferenceImpl
             }
         }
 
-        getColibriSessionManager().removeParticipant(participant.getEndpointId());
+        getColibriSessionManager().removeParticipant(participant.getEndpointId(), context);
     }
 
     @Override
@@ -1183,7 +1237,7 @@ public class JitsiMeetConferenceImpl
 
                 // This is a connect without resumption, so make sure we fix the state, by stopping
                 // all clients will reload the state will be fine when they invite us again.
-                stop();
+                stop(Context.root());
             }
         }
         else
@@ -1196,13 +1250,13 @@ public class JitsiMeetConferenceImpl
             {
                 logger.info("XMPP will wait for a reconnect.");
                 reconnectTimeout = TaskPools.getScheduledPool().schedule(
-                        this::stop,
+                        () -> stop(Context.root()),
                         XmppConfig.client.getReplyTimeout().toMillis(),
                         TimeUnit.MILLISECONDS);
             }
             else
             {
-                stop();
+                stop(Context.root());
             }
         }
     }
@@ -1298,12 +1352,13 @@ public class JitsiMeetConferenceImpl
                     (reinvite) ? "reinvite requested" : null,
                     /* do not send session-terminate */ false,
                     /* do send source-remove */ true,
-                    reinvite);
+                    reinvite,
+                    Context.root());
 
             if (reinvite)
             {
                 participants.put(participant.getChatMember().getOccupantJid(), participant);
-                inviteParticipant(participant, false, false);
+                inviteParticipant(participant, false, false, Context.root());
             }
         }
     }
@@ -1342,7 +1397,9 @@ public class JitsiMeetConferenceImpl
                 transport,
                 null /* no change in sources, just transport */,
                 null,
-                false);
+                false,
+                Context.root()
+        );
     }
 
     /**
@@ -1392,7 +1449,8 @@ public class JitsiMeetConferenceImpl
                 null,
                 participant.getSources(),
                 null,
-                false);
+                false,
+                Context.root());
         propagateNewSources(participant, sourcesAccepted);
     }
 
@@ -1427,7 +1485,8 @@ public class JitsiMeetConferenceImpl
                 null,
                 participant.getSources(),
                 null,
-                false);
+                false,
+                Context.root());
 
         sendSourceRemove(new ConferenceSourceMap(participantId, sourcesAcceptedToBeRemoved), participant);
     }
@@ -1439,7 +1498,9 @@ public class JitsiMeetConferenceImpl
             @NotNull Participant participant,
             @NotNull EndpointSourceSet sourcesAdvertised,
             IceUdpTransportPacketExtension transport,
-            @Nullable InitialLastN initialLastN)
+            @Nullable InitialLastN initialLastN,
+            Context context
+    )
     throws ValidationFailedException
     {
         String participantId = participant.getEndpointId();
@@ -1455,7 +1516,8 @@ public class JitsiMeetConferenceImpl
                 transport,
                 getSourcesForParticipant(participant),
                 initialLastN,
-                false);
+                false,
+                context);
 
         if (!sourcesAccepted.isEmpty())
         {
@@ -1495,7 +1557,8 @@ public class JitsiMeetConferenceImpl
                         null,
                         participant.getSources(),
                         null,
-                        true);
+                        true,
+                        Context.root());
             }
 
             if (sendSourceRemove)
@@ -1863,7 +1926,7 @@ public class JitsiMeetConferenceImpl
             return false;
         }
 
-        colibriSessionManager.removeParticipant(endpointId);
+        colibriSessionManager.removeParticipant(endpointId, Context.root());
         return reInviteParticipantsById(Collections.singletonList(endpointId)) == 1;
     }
 
@@ -1880,7 +1943,7 @@ public class JitsiMeetConferenceImpl
                 = colibriSessionManager.getParticipants(bridge).stream().limit(numEps).collect(Collectors.toList());
         for (String participantId : participantIds)
         {
-            colibriSessionManager.removeParticipant(participantId);
+            colibriSessionManager.removeParticipant(participantId, Context.root());
         }
         return reInviteParticipantsById(participantIds);
     }
@@ -2137,7 +2200,8 @@ public class JitsiMeetConferenceImpl
                 "jingle session failed",
                 /* send session-terminate */ true,
                 /* send source-remove */ true,
-                /* not reinviting */ false);
+                /* not reinviting */ false,
+                Context.root());
     }
 
     /**
@@ -2216,7 +2280,7 @@ public class JitsiMeetConferenceImpl
 
                 // If were restarting the jingle session it's a fresh invite (reInvite = false), otherwise it's a
                 // transport-replace (reInvite = true)
-                inviteParticipant(participant, !restartJingle, false);
+                inviteParticipant(participant, !restartJingle, false, Context.root());
             }
         }
     }
@@ -2287,7 +2351,7 @@ public class JitsiMeetConferenceImpl
                             return;
                         }
 
-                        stop();
+                        stop(Context.root());
                     },
                     ConferenceConfig.config.getConferenceStartTimeout().toMillis(),
                     TimeUnit.MILLISECONDS);
@@ -2422,7 +2486,7 @@ public class JitsiMeetConferenceImpl
                 if (participants.isEmpty())
                 {
                     logger.info("Transcribing enabled with existing participants, starting sessions.");
-                    inviteAllChatMembers();
+                    inviteAllChatMembers(Context.root());
                 }
             }
         }
@@ -2489,6 +2553,8 @@ public class JitsiMeetConferenceImpl
         @Override
         public void run()
         {
+
+
             synchronized (participantLock)
             {
                 if (participants.size() == 1)
@@ -2496,15 +2562,28 @@ public class JitsiMeetConferenceImpl
                     Participant p = participants.values().stream().findFirst().orElse(null);
                     logger.info("Timing out single participant: " + p.getChatMember().getName());
 
+                    Span span = tracer.spanBuilder("conference.timeout")
+                        .setAttribute("member.name", p.getChatMember().getName())
+                        .setAttribute("member.id", Objects.toString(p.getChatMember().getJid()))
+                        .setAttribute("member.role", p.getChatMember().getRole().toString())
+                        .setAttribute("member.region", StringUtils.defaultString(p.getChatMember().getRegion()))
+                        .setAttribute("member.stats-id", Objects.toString(p.getChatMember().getStatsId()))
+                        .setAttribute("member.audioMuted", p.getChatMember().isAudioMuted())
+                        .setAttribute("member.videoMuted", p.getChatMember().isVideoMuted())
+                        .setAttribute("room.id", p.getChatMember().getChatRoom().getRoomJid().toString())
+                        .startSpan();
+                    Context context = span.storeInContext(Context.root());
                     terminateParticipant(
                             p,
                             Reason.EXPIRED,
                             "Idle session timeout",
                             /* send session-terminate */ true,
                             /* send source-remove */ false,
-                            /* not reinviting */ false);
+                            /* not reinviting */ false,
+                            context);
 
-                    expireBridgeSessions();
+                    expireBridgeSessions(Context.root());
+                    span.end();
                 }
                 else
                 {
@@ -2661,8 +2740,14 @@ public class JitsiMeetConferenceImpl
         @Override
         public void roomDestroyed(String reason)
         {
+            Span span = tracer.spanBuilder("conference.room-destroyed")
+                    .setAttribute("room.id", chatRoom.getRoomJid().toString())
+                    .setAttribute("reason", (reason != null) ? reason : "")
+                    .startSpan();
+            Context context = span.storeInContext(Context.root());
             logger.info("Room destroyed with reason=" + reason);
-            stop();
+            stop(context);
+            span.end();
         }
 
         @Override
@@ -2699,7 +2784,7 @@ public class JitsiMeetConferenceImpl
             {
                 logger.warn(
                     "Stopping, because the local role changed to " + newRole + " (owner privileges are required).");
-                stop();
+                stop(Context.root());
             }
         }
 

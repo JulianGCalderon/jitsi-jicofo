@@ -17,6 +17,8 @@
  */
 package org.jitsi.jicofo.conference;
 
+import io.opentelemetry.api.trace.*;
+import io.opentelemetry.context.*;
 import org.jetbrains.annotations.*;
 import org.jitsi.jicofo.*;
 import org.jitsi.jicofo.bridge.colibri.*;
@@ -47,6 +49,8 @@ import java.util.*;
 public class ParticipantInviteRunnable implements Runnable, Cancelable
 {
     private final Logger logger;
+    private final Tracer tracer = GlobalOTel.INSTANCE.getSdk().getTracer("org.jitsi.jicofo.conference");
+    private Context context;
 
     /**
      * The {@link JitsiMeetConferenceImpl} into which a participant will be
@@ -107,10 +111,12 @@ public class ParticipantInviteRunnable implements Runnable, Cancelable
             boolean startAudioMuted,
             boolean startVideoMuted,
             boolean reInvite,
-            Logger parentLogger)
+            Logger parentLogger,
+            Context context)
     {
         this.meetConference = meetConference;
         this.colibriSessionManager = colibriSessionManager;
+        this.context = context;
 
         boolean forceMuteAudio = false;
         boolean forceMuteVideo = false;
@@ -146,6 +152,10 @@ public class ParticipantInviteRunnable implements Runnable, Cancelable
     @Override
     public void run()
     {
+        Span span = tracer.spanBuilder("muc.participant-invite")
+            .setParent(context)
+            .startSpan();
+        context = span.storeInContext(context);
         try
         {
             doRun();
@@ -157,6 +167,7 @@ public class ParticipantInviteRunnable implements Runnable, Cancelable
         }
         finally
         {
+            span.end();
             participant.inviteRunnableCompleted(this);
         }
     }
@@ -207,7 +218,7 @@ public class ParticipantInviteRunnable implements Runnable, Cancelable
                     (participant.getChatMember().getRole() == MemberRole.VISITOR),
                     privateAddresses,
                     medias);
-            colibriAllocation = colibriSessionManager.allocate(participantOptions);
+            colibriAllocation = colibriSessionManager.allocate(participantOptions, context);
         }
         catch (BridgeSelectionFailedException e)
         {
@@ -247,7 +258,7 @@ public class ParticipantInviteRunnable implements Runnable, Cancelable
         catch (SmackException.NotConnectedException e)
         {
             logger.error("Failed to invite participant: ", e);
-            colibriSessionManager.removeParticipant(participant.getEndpointId());
+            colibriSessionManager.removeParticipant(participant.getEndpointId(), context);
             cancel();
         }
     }
@@ -385,12 +396,13 @@ public class ParticipantInviteRunnable implements Runnable, Cancelable
             ack = jingleSession.initiateSession(
                     offer.getContents(),
                     additionalExtensions,
-                    sources
+                    sources,
+                    context
             );
         }
         else
         {
-            ack = jingleSession.replaceTransport(offer.getContents(), additionalExtensions, sources);
+            ack = jingleSession.replaceTransport(offer.getContents(), additionalExtensions, sources, context);
         }
 
         if (!ack)

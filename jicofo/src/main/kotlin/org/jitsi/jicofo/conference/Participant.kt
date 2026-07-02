@@ -17,6 +17,7 @@
  */
 package org.jitsi.jicofo.conference
 
+import io.opentelemetry.context.Context
 import org.jitsi.jicofo.ConferenceConfig
 import org.jitsi.jicofo.TaskPools.Companion.scheduledPool
 import org.jitsi.jicofo.conference.JitsiMeetConferenceImpl.InvalidBridgeSessionIdException
@@ -405,13 +406,17 @@ open class Participant @JvmOverloads constructor(
             return null
         }
 
-        override fun onSessionAccept(jingleSession: JingleSession, contents: List<ContentPacketExtension>) =
-            onSessionOrTransportAccept(jingleSession, contents, JingleAction.SESSION_ACCEPT)
+        override fun onSessionAccept(
+            jingleSession: JingleSession,
+            contents: List<ContentPacketExtension>,
+            context: Context
+        ) = onSessionOrTransportAccept(jingleSession, contents, JingleAction.SESSION_ACCEPT, context)
 
         private fun onSessionOrTransportAccept(
             jingleSession: JingleSession,
             contents: List<ContentPacketExtension>,
-            action: JingleAction
+            action: JingleAction,
+            context: Context = Context.root()
         ): StanzaError? {
             if (this@Participant.jingleSession != null && this@Participant.jingleSession != jingleSession) {
                 logger.error("Rejecting $action for a session that has been replaced.")
@@ -427,7 +432,13 @@ open class Participant @JvmOverloads constructor(
                 contents.find { it.name == "video" }?.getChildExtension(InitialLastN::class.java)
 
             try {
-                conference.acceptSession(this@Participant, sourcesAdvertised, contents.getTransport(), initialLastN)
+                conference.acceptSession(
+                    this@Participant,
+                    sourcesAdvertised,
+                    contents.getTransport(),
+                    initialLastN,
+                    context
+                )
             } catch (e: ValidationFailedException) {
                 return StanzaError.from(StanzaError.Condition.bad_request, e.message).build()
             }
@@ -507,8 +518,11 @@ open class Participant @JvmOverloads constructor(
             return null
         }
 
-        override fun onTransportAccept(jingleSession: JingleSession, contents: List<ContentPacketExtension>) =
-            onSessionOrTransportAccept(jingleSession, contents, JingleAction.TRANSPORT_ACCEPT)
+        override fun onTransportAccept(
+            jingleSession: JingleSession,
+            contents: List<ContentPacketExtension>,
+            context: Context
+        ) = onSessionOrTransportAccept(jingleSession, contents, JingleAction.TRANSPORT_ACCEPT, context)
 
         override fun onTransportReject(jingleSession: JingleSession, iq: JingleIQ) {
             checkJingleSession(jingleSession)?.let { return }

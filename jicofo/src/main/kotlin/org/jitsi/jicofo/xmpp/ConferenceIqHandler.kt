@@ -18,6 +18,7 @@
 package org.jitsi.jicofo.xmpp
 
 import org.jitsi.jicofo.FocusManager
+import org.jitsi.jicofo.GlobalOTel
 import org.jitsi.jicofo.TaskPools
 import org.jitsi.jicofo.auth.AuthenticationAuthority
 import org.jitsi.jicofo.auth.ErrorFactory
@@ -55,6 +56,7 @@ class ConferenceIqHandler(
     private val connection = xmppProvider.xmppConnection
     private var breakoutAddress: DomainBareJid? = null
     private val logger = createLogger()
+    private val tracer = GlobalOTel.sdk.getTracer("org.jitsi.jicofo.xmpp")
 
     init {
         xmppProvider.addListener(this)
@@ -72,112 +74,129 @@ class ConferenceIqHandler(
 
     /** Handle a [ConferenceIq] synchronously and return a response. */
     fun handleConferenceIq(query: ConferenceIq): IQ {
-        val room = query.room ?: return IQ.createErrorResponse(
-            query,
-            StanzaError.from(StanzaError.Condition.bad_request, "No 'room' specified.").build()
-        )
-        val token = parseToken(query.token)
-        val userId = token?.context?.user?.id
-        val groupId = token?.context?.group
-
-        val response = ConferenceIq().apply {
-            type = IQ.Type.result
-            stanzaId = query.stanzaId
-            from = query.to
-            to = query.from
-            this.room = query.room
-            focusJid = focusAuthJid
-
-            if (authAuthority != null) {
-                addProperty(ConferenceIq.Property("authentication", "true"))
-                addProperty(ConferenceIq.Property("externalAuth", authAuthority.isExternal.toString()))
-            } else {
-                addProperty(ConferenceIq.Property("authentication", "false"))
-            }
-
-            if (jigasiEnabled) {
-                addProperty(ConferenceIq.Property("sipGatewayEnabled", "true"))
-            }
-        }
-
-        logger.info("Conference request for room $room, from ${query.from}, token=${query.token != null}")
-        logger.debug { "User ID: $userId, Group ID: $groupId" }
-        conferenceRequestCounter.inc()
-        var conference = focusManager.getConference(room)
-        val roomExists = conference != null
-        if (!roomExists) {
-            newConferenceRequestCounter.inc()
-            if (!parseBoolean(query.propertiesMap.getOrDefault("rtcstatsEnabled", "true"))) {
-                logger.info("New room with rtcstats disabled: $room")
-            }
-        }
-
-        // Authentication logic
-        val error: IQ? = processExtensions(query, room, response, roomExists)
-        if (error != null) {
-            return error
-        }
-
-        val visitorSupported = query.properties.any { it.name == "visitors-version" }
-        val visitorRequested = query.properties.any { it.name == "visitor" && it.value == "true" }
-        var visitorsLive = conference?.chatRoom?.visitorsLive ?: false
-        logger.debug {
-            "visitorSupported=$visitorSupported, visitorRequested=$visitorRequested, visitorsLive=$visitorsLive"
-        }
-        // Here we return early without creating a conference.
-        if (visitorSupported && visitorRequested && visitorsConfig.enableLiveRoom && !visitorsLive) {
-            logger.debug("Sending to queue")
-            response.isReady = false
-            response.addProperty(ConferenceIq.Property("live", "false"))
-            return response
-        }
-
-        // If the conference didn't exist previously, it will be created and the MUC will be joined here (blocking).
-        conference = focusManager.conferenceRequest(room, query.propertiesMap)
-        response.isReady = conference.isStarted && (conference.chatRoom?.isJoined == true)
-
-        // We've now joined the MUC and room metadata has been set.
-        visitorsLive = conference.chatRoom?.visitorsLive ?: false
-        val visitorsSupported = visitorsManager.enabled &&
-            (conference.chatRoom?.visitorsEnabled == true || !visitorsConfig.requireMucConfigFlag)
-        response.addProperty("visitors-supported", visitorsSupported.toString())
-        val allowedInMainRoom = conference.chatRoom?.isAllowedInMainRoom(userId, groupId) == true
-        val preferredInMainRoom = conference.chatRoom?.isPreferredInMainRoom(userId, groupId) == true
-
-        logger.debug {
-            "allowedInMainRoom=$allowedInMainRoom, preferredInMainRoom=$preferredInMainRoom, visitorsLive=$visitorsLive"
-        }
-        if (visitorsConfig.enableLiveRoom && !allowedInMainRoom && !visitorsLive && visitorSupported) {
-            logger.debug("Sending to queue")
-            response.isReady = false
-            response.addProperty(ConferenceIq.Property("live", "false"))
-            return response
-        }
-
-        val vnode = if (visitorSupported && visitorsManager.enabled && (visitorRequested || !preferredInMainRoom)) {
-            conference.redirectVisitor(
-                visitorRequested || !allowedInMainRoom,
-                userId,
-                groupId
+        val span = tracer.spanBuilder("xmpp.conference")
+            .setAttribute("id", query.stanzaId)
+            .setAttribute("from", query.from?.toString() ?: "")
+            .setAttribute("room", query.room?.toString() ?: "")
+            .setAttribute("ready", query.isReady?.toString() ?: "")
+            .setAttribute("focusJid", query.focusJid)
+            .setAttribute("sessionId", query.sessionId)
+            .setAttribute("machineUID", query.machineUID)
+            .setAttribute("identity", query.identity)
+            .setAttribute("vnode", query.vnode)
+            .setAttribute("token", query.token)
+            .startSpan()
+        try {
+            val room = query.room ?: return IQ.createErrorResponse(
+                query,
+                StanzaError.from(StanzaError.Condition.bad_request, "No 'room' specified.").build()
             )
-        } else {
-            null
-        }
-        if (visitorsManager.enabled && !visitorSupported) {
-            logger.info("Endpoint with no visitor support.")
-        }
+            val token = parseToken(query.token)
+            val userId = token?.context?.user?.id
+            val groupId = token?.context?.group
 
-        XmppConfig.visitors[vnode]?.jid?.let {
-            logger.info("Redirecting to $vnode")
-            response.vnode = vnode
-            response.focusJid = it
-        } ?: run {
-            if (vnode != null) {
-                logger.error("No XmppConnectionConfig for vnode=$vnode")
+            val response = ConferenceIq().apply {
+                type = IQ.Type.result
+                stanzaId = query.stanzaId
+                from = query.to
+                to = query.from
+                this.room = query.room
+                focusJid = focusAuthJid
+
+                if (authAuthority != null) {
+                    addProperty(ConferenceIq.Property("authentication", "true"))
+                    addProperty(ConferenceIq.Property("externalAuth", authAuthority.isExternal.toString()))
+                } else {
+                    addProperty(ConferenceIq.Property("authentication", "false"))
+                }
+
+                if (jigasiEnabled) {
+                    addProperty(ConferenceIq.Property("sipGatewayEnabled", "true"))
+                }
             }
-        }
 
-        return response
+            logger.info("Conference request for room $room, from ${query.from}, token=${query.token != null}")
+            logger.debug { "User ID: $userId, Group ID: $groupId" }
+            conferenceRequestCounter.inc()
+            var conference = focusManager.getConference(room)
+            val roomExists = conference != null
+            if (!roomExists) {
+                newConferenceRequestCounter.inc()
+                if (!parseBoolean(query.propertiesMap.getOrDefault("rtcstatsEnabled", "true"))) {
+                    logger.info("New room with rtcstats disabled: $room")
+                }
+            }
+
+            // Authentication logic
+            val error: IQ? = processExtensions(query, room, response, roomExists)
+            if (error != null) {
+                return error
+            }
+
+            val visitorSupported = query.properties.any { it.name == "visitors-version" }
+            val visitorRequested = query.properties.any { it.name == "visitor" && it.value == "true" }
+            var visitorsLive = conference?.chatRoom?.visitorsLive ?: false
+            logger.debug {
+                "visitorSupported=$visitorSupported, visitorRequested=$visitorRequested, visitorsLive=$visitorsLive"
+            }
+            // Here we return early without creating a conference.
+            if (visitorSupported && visitorRequested && visitorsConfig.enableLiveRoom && !visitorsLive) {
+                logger.debug("Sending to queue")
+                response.isReady = false
+                response.addProperty(ConferenceIq.Property("live", "false"))
+                return response
+            }
+
+            // If the conference didn't exist previously, it will be created and the MUC will be joined here (blocking).
+            conference = focusManager.conferenceRequest(room, query.propertiesMap)
+            response.isReady = conference.isStarted && (conference.chatRoom?.isJoined == true)
+
+            // We've now joined the MUC and room metadata has been set.
+            visitorsLive = conference.chatRoom?.visitorsLive ?: false
+            val visitorsSupported = visitorsManager.enabled &&
+                (conference.chatRoom?.visitorsEnabled == true || !visitorsConfig.requireMucConfigFlag)
+            response.addProperty("visitors-supported", visitorsSupported.toString())
+            val allowedInMainRoom = conference.chatRoom?.isAllowedInMainRoom(userId, groupId) == true
+            val preferredInMainRoom = conference.chatRoom?.isPreferredInMainRoom(userId, groupId) == true
+
+            logger.debug {
+                "allowedInMainRoom=$allowedInMainRoom, " + "preferredInMainRoom=$preferredInMainRoom, " +
+                    "visitorsLive=$visitorsLive"
+            }
+            if (visitorsConfig.enableLiveRoom && !allowedInMainRoom && !visitorsLive && visitorSupported) {
+                logger.debug("Sending to queue")
+                response.isReady = false
+                response.addProperty(ConferenceIq.Property("live", "false"))
+                return response
+            }
+
+            val vnode = if (visitorSupported && visitorsManager.enabled && (visitorRequested || !preferredInMainRoom)) {
+                conference.redirectVisitor(
+                    visitorRequested || !allowedInMainRoom,
+                    userId,
+                    groupId
+                )
+            } else {
+                null
+            }
+            if (visitorsManager.enabled && !visitorSupported) {
+                logger.info("Endpoint with no visitor support.")
+            }
+
+            XmppConfig.visitors[vnode]?.jid?.let {
+                logger.info("Redirecting to $vnode")
+                response.vnode = vnode
+                response.focusJid = it
+            } ?: run {
+                if (vnode != null) {
+                    logger.error("No XmppConnectionConfig for vnode=$vnode")
+                }
+            }
+
+            return response
+        } finally {
+            span.end()
+        }
     }
 
     /**
