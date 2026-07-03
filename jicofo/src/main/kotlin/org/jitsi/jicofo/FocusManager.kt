@@ -17,6 +17,7 @@
  */
 package org.jitsi.jicofo
 
+import io.opentelemetry.context.Context
 import org.jitsi.jicofo.conference.ConferenceMetrics
 import org.jitsi.jicofo.conference.JitsiMeetConference
 import org.jitsi.jicofo.conference.JitsiMeetConferenceImpl
@@ -95,7 +96,8 @@ class FocusManager(
         /** The logging level which should be used by the new conference. */
         loggingLevel: Level = Level.ALL,
         /** Whether this conference should be included in statistics. */
-        includeInStatistics: Boolean = true
+        includeInStatistics: Boolean = true,
+        context: Context = Context.root(),
     ): JitsiMeetConference {
         var conference: JitsiMeetConferenceImpl
         var isConferenceCreator: Boolean
@@ -107,7 +109,7 @@ class FocusManager(
         }
         try {
             if (isConferenceCreator) {
-                conference.start()
+                conference.start(context)
             }
         } catch (e: Exception) {
             logger.warn("Exception while trying to start the conference", e)

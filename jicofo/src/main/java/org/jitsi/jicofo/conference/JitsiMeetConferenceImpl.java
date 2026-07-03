@@ -38,6 +38,7 @@ import org.jitsi.jicofo.xmpp.muc.*;
 import org.jitsi.utils.*;
 import org.jitsi.utils.logging2.*;
 import org.jitsi.utils.logging2.Logger;
+import org.jitsi.xmpp.extensions.TraceParent;
 import org.jitsi.xmpp.extensions.colibri2.*;
 import org.jitsi.xmpp.extensions.jibri.*;
 import org.jitsi.xmpp.extensions.jingle.*;
@@ -396,7 +397,7 @@ public class JitsiMeetConferenceImpl
      *         possible. {@link ConferenceListener}s will be notified that this
      *         conference has ended.
      */
-    public void start()
+    public void start(Context context)
         throws Exception
     {
         if (!started.compareAndSet(false, true))
@@ -413,7 +414,7 @@ public class JitsiMeetConferenceImpl
 
             if (clientXmppProvider.getRegistered())
             {
-                joinTheRoom();
+                joinTheRoom(context);
             }
 
             JibriDetector jibriDetector = jicofoServices.getJibriDetector();
@@ -579,7 +580,7 @@ public class JitsiMeetConferenceImpl
      *
      * @throws Exception if we have failed to join the room for any reason
      */
-    private void joinTheRoom()
+    private void joinTheRoom(Context context)
         throws Exception
     {
         logger.info("Joining " + roomName);
@@ -588,7 +589,7 @@ public class JitsiMeetConferenceImpl
         this.chatRoom = chatRoom;
         chatRoom.addListener(chatRoomListener);
 
-        ChatRoomInfo chatRoomInfo = chatRoom.join();
+        ChatRoomInfo chatRoomInfo = chatRoom.join(context);
         setMeetingId(chatRoomInfo.getMeetingId());
 
         mainRoomJid = chatRoomInfo.getMainRoomJid();
@@ -2096,7 +2097,7 @@ public class JitsiMeetConferenceImpl
             chatRoomToJoin.visitorInvited();
         }
 
-        chatRoomToJoin.join();
+        chatRoomToJoin.join(Context.root());
         Collection<ExtensionElement> presenceExtensions = new ArrayList<>();
 
         ComponentVersionsExtension versionsExtension = new ComponentVersionsExtension();

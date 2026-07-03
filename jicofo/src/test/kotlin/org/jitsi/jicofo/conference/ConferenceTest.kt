@@ -24,6 +24,7 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.mockk.every
 import io.mockk.mockk
+import io.opentelemetry.context.Context
 import org.jitsi.config.withNewConfig
 import org.jitsi.jicofo.ConferenceConfig
 import org.jitsi.jicofo.TaskPools
@@ -92,7 +93,7 @@ class ConferenceTest : ShouldSpec() {
                 }
             }
         }
-    ).apply { start() }
+    ).apply { start(Context.root()) }
 
     override fun isolationMode(): IsolationMode = IsolationMode.InstancePerLeaf
 

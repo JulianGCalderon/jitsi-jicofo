@@ -18,6 +18,8 @@
 package org.jitsi.jicofo.xmpp.muc
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings
+import io.opentelemetry.api.trace.Span
+import io.opentelemetry.context.Context
 import org.jitsi.jicofo.JicofoConfig
 import org.jitsi.jicofo.MediaType
 import org.jitsi.jicofo.TaskPools.Companion.ioPool
@@ -33,6 +35,7 @@ import org.jitsi.utils.event.SyncEventEmitter
 import org.jitsi.utils.logging2.createLogger
 import org.jitsi.utils.observableWhenChanged
 import org.jitsi.utils.queue.PacketQueue
+import org.jitsi.xmpp.extensions.TraceParent
 import org.jivesoftware.smack.PresenceListener
 import org.jivesoftware.smack.SmackException
 import org.jivesoftware.smack.XMPPConnection
@@ -140,14 +143,24 @@ class ChatRoomImpl(
         // the MUC service to re-send the presence of each occupant in the
         // room.
         synchronized(this@ChatRoomImpl) {
+            for (extension in transientPresenceExtensions) {
+                presenceBuilder.addExtension(extension)
+            }
             val p = presenceBuilder.build()
             p.removeExtension(
                 MUCInitialPresence.ELEMENT,
                 MUCInitialPresence.NAMESPACE
             )
+            for (extension in transientPresenceExtensions) {
+                p.removeExtension(extension.elementName, extension.namespace)
+            }
+            transientPresenceExtensions.clear()
             lastPresenceSent = p.asBuilder()
         }
     }
+
+    /** Extensions that should be included only in the next presence. */
+    var transientPresenceExtensions = mutableListOf<ExtensionElement>()
 
     /** Smack multi user chat backend instance. */
     private val muc: MultiUserChat =
@@ -292,10 +305,10 @@ class ChatRoomImpl(
         avModeration(mediaType).isAllowedToUnmute(jid)
 
     @Throws(SmackException::class, XMPPException::class, InterruptedException::class)
-    override fun join(): ChatRoomInfo {
+    override fun join(context: Context): ChatRoomInfo {
         // TODO: clean-up the way we figure out what nickname to use.
         resetState()
-        return joinAs(xmppProvider.config.username)
+        return joinAs(xmppProvider.config.username, context)
     }
 
     /**
@@ -320,7 +333,7 @@ class ChatRoomImpl(
     }
 
     @Throws(SmackException::class, XMPPException::class, InterruptedException::class)
-    private fun joinAs(nickname: Resourcepart): ChatRoomInfo {
+    private fun joinAs(nickname: Resourcepart, context: Context = Context.root()): ChatRoomInfo {
         // The queue should block until the room is fully joined.
         xmppTaskQueue.add { roomJoinedLatch.await() }
 
@@ -332,6 +345,13 @@ class ChatRoomImpl(
         }
 
         muc.addPresenceInterceptor(presenceInterceptor)
+
+        val span = Span.fromContextOrNull(context)
+        if (span != null) {
+            transientPresenceExtensions.add(
+                TraceParent(span.spanContext.traceId, span.spanContext.spanId)
+            )
+        }
         muc.createOrJoin(nickname)
         val config = muc.configurationForm
 

@@ -17,6 +17,7 @@
  */
 package org.jitsi.jicofo.xmpp.muc
 
+import io.opentelemetry.context.Context
 import org.jitsi.jicofo.MediaType
 import org.jitsi.jicofo.xmpp.RoomMetadata
 import org.jitsi.jicofo.xmpp.XmppProvider
@@ -95,7 +96,7 @@ interface ChatRoom {
      * joining.
      */
     @Throws(SmackException::class, XMPPException::class, InterruptedException::class)
-    fun join(): ChatRoomInfo
+    fun join(context: Context = Context.root()): ChatRoomInfo
 
     /** Leave the chat room. */
     fun leave()

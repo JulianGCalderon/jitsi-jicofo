@@ -17,6 +17,7 @@
  */
 package org.jitsi.jicofo.xmpp;
 
+import io.opentelemetry.context.*;
 import org.jetbrains.annotations.*;
 import org.jitsi.jicofo.*;
 import org.jitsi.jicofo.xmpp.muc.*;
@@ -194,7 +195,7 @@ public abstract class BaseBrewery<T extends ExtensionElement>
         {
             chatRoom = xmppProvider.createRoom(breweryJid);
             chatRoom.addListener(chatRoomListener);
-            chatRoom.join();
+            chatRoom.join(Context.root());
 
             logger.info("Joined the room.");
         }

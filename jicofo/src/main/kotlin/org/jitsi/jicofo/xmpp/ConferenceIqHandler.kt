@@ -17,6 +17,7 @@
  */
 package org.jitsi.jicofo.xmpp
 
+import io.opentelemetry.context.Context
 import org.jitsi.jicofo.FocusManager
 import org.jitsi.jicofo.GlobalOTel
 import org.jitsi.jicofo.TaskPools
@@ -148,7 +149,9 @@ class ConferenceIqHandler(
             }
 
             // If the conference didn't exist previously, it will be created and the MUC will be joined here (blocking).
-            conference = focusManager.conferenceRequest(room, query.propertiesMap)
+            conference = focusManager.conferenceRequest(
+                room, query.propertiesMap, context = span.storeInContext(Context.root())
+            )
             response.isReady = conference.isStarted && (conference.chatRoom?.isJoined == true)
 
             // We've now joined the MUC and room metadata has been set.
