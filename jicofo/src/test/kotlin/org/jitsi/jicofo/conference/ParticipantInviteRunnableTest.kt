@@ -79,7 +79,7 @@ class ParticipantInviteRunnableTest : ShouldSpec({
             )
         )
         val colibriSessionManager = mockk<ColibriSessionManager> {
-            every { allocate(any()) } returns ColibriAllocation(
+            every { allocate(any(), context = any()) } returns ColibriAllocation(
                 feedbackSources,
                 IceUdpTransportPacketExtension(),
                 null,
@@ -125,7 +125,8 @@ class ParticipantInviteRunnableTest : ShouldSpec({
                         initiateSession(
                             capture(jingleContentsSlot),
                             any(),
-                            capture(sourcesContentsSlot)
+                            capture(sourcesContentsSlot),
+                            context = any(),
                         )
                     } returns true
                 }

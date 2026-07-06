@@ -32,7 +32,7 @@ class ConferenceIqHandlerTest : ShouldSpec() {
         xmppProvider = mockk(relaxed = true),
         focusManager = mockk {
             every { getConference(any()) } returns null
-            every { conferenceRequest(any(), any()) } returns mockk<JitsiMeetConference> {
+            every { conferenceRequest(any(), any(), context = any()) } returns mockk<JitsiMeetConference> {
                 every { isStarted() } returns true
                 every { chatRoom } returns null
             }

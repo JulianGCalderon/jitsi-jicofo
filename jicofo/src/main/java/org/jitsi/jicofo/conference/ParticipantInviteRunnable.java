@@ -50,7 +50,7 @@ public class ParticipantInviteRunnable implements Runnable, Cancelable
 {
     private final Logger logger;
     private final Tracer tracer = GlobalOTel.INSTANCE.getSdk().getTracer("org.jitsi.jicofo.conference");
-    private Context context;
+    private final Context rootContext;
 
     /**
      * The {@link JitsiMeetConferenceImpl} into which a participant will be
@@ -116,7 +116,7 @@ public class ParticipantInviteRunnable implements Runnable, Cancelable
     {
         this.meetConference = meetConference;
         this.colibriSessionManager = colibriSessionManager;
-        this.context = context;
+        this.rootContext = context;
 
         boolean forceMuteAudio = false;
         boolean forceMuteVideo = false;
@@ -153,12 +153,12 @@ public class ParticipantInviteRunnable implements Runnable, Cancelable
     public void run()
     {
         Span span = tracer.spanBuilder("muc.participant-invite")
-            .setParent(context)
+            .setParent(rootContext)
             .startSpan();
-        context = span.storeInContext(context);
+        Context context = span.storeInContext(rootContext);
         try
         {
-            doRun();
+            doRun(context);
         }
         catch (Throwable e)
         {
@@ -172,7 +172,7 @@ public class ParticipantInviteRunnable implements Runnable, Cancelable
         }
     }
 
-    private void doRun()
+    private void doRun(Context context)
     {
         Offer offer = createOffer();
         if (canceled)
@@ -253,7 +253,7 @@ public class ParticipantInviteRunnable implements Runnable, Cancelable
 
         try
         {
-            invite(offer, colibriAllocation);
+            invite(offer, colibriAllocation, context);
         }
         catch (SmackException.NotConnectedException e)
         {
@@ -302,7 +302,7 @@ public class ParticipantInviteRunnable implements Runnable, Cancelable
     /**
      * {@inheritDoc}
      */
-    private void invite(Offer offer, ColibriAllocation colibriAllocation)
+    private void invite(Offer offer, ColibriAllocation colibriAllocation, Context context)
         throws SmackException.NotConnectedException
     {
         /*
@@ -335,7 +335,7 @@ public class ParticipantInviteRunnable implements Runnable, Cancelable
         }
         else if (!canceled)
         {
-            if (!doInviteOrReinvite(offer, colibriAllocation))
+            if (!doInviteOrReinvite(offer, colibriAllocation, context))
             {
                 expireChannels = true;
             }
@@ -363,7 +363,7 @@ public class ParticipantInviteRunnable implements Runnable, Cancelable
      * @throws SmackException.NotConnectedException if we are unable to send a packet because the XMPP connection is not
      * connected.
      */
-    private boolean doInviteOrReinvite(Offer offer, ColibriAllocation colibriAllocation)
+    private boolean doInviteOrReinvite(Offer offer, ColibriAllocation colibriAllocation, Context context)
         throws SmackException.NotConnectedException
     {
         JingleSession jingleSession = participant.getJingleSession();
