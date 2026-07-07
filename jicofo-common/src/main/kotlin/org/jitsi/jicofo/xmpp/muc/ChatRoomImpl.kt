@@ -349,7 +349,11 @@ class ChatRoomImpl(
         val span = Span.fromContextOrNull(context)
         if (span != null) {
             transientPresenceExtensions.add(
-                TraceParent(span.spanContext.traceId, span.spanContext.spanId)
+                TraceParent(
+                    span.spanContext.traceId,
+                    span.spanContext.spanId,
+                    span.spanContext.traceFlags.asHex()
+                )
             )
         }
         muc.createOrJoin(nickname)

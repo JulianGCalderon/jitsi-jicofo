@@ -122,7 +122,7 @@ class JingleSession(
                     SpanContext.createFromRemoteParent(
                         traceParent.traceId,
                         traceParent.parentId,
-                        TraceFlags.getSampled(),
+                        TraceFlags.fromHex(traceParent.traceFlags, 0),
                         TraceState.getDefault(),
                     )
                 )
@@ -318,7 +318,13 @@ class JingleSession(
             if (encodeSourcesAsJson) {
                 addExtension(sources.toJsonMessageExtension())
             }
-            addExtension(TraceParent(span.spanContext.traceId, span.spanContext.spanId))
+            addExtension(
+                TraceParent(
+                    span.spanContext.traceId,
+                    span.spanContext.spanId,
+                    span.spanContext.traceFlags.asHex()
+                )
+            )
         }
 
         jingleIqRequestHandler.registerSession(this)

@@ -223,6 +223,7 @@ class Colibri2Session(
                     TraceParent(
                         span.spanContext.traceId,
                         span.spanContext.spanId,
+                        span.spanContext.traceFlags.asHex(),
                     )
                 )
             }
