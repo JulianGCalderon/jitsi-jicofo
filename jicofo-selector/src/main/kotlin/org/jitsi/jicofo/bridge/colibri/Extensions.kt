@@ -114,6 +114,9 @@ internal fun ParticipantInfo.toEndpoint(
         if (useSsrcRewriting) {
             addCapability(Capability.CAP_SSRC_REWRITING_SUPPORT)
         }
+        if (useRtpMidDemux) {
+            addCapability(Capability.CAP_RTP_MID_DEMUX_SUPPORT)
+        }
     }
     // TODO: find a way to signal sources only when they change? Or is this already the case implicitly?
     if (!expire) {

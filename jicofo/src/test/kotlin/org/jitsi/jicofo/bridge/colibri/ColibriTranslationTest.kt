@@ -89,6 +89,7 @@ class ColibriTranslationTest : ShouldSpec() {
             region = null,
             sources = EndpointSourceSet.EMPTY,
             useSsrcRewriting = false,
+            useRtpMidDemux = false,
             forceMuteAudio = false,
             forceMuteVideo = false,
             useSctp = false,
