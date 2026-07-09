@@ -241,9 +241,6 @@ class JingleSession(
             .setAttribute("state", state.toString())
             .setParent(context)
             .startSpan()
-        for (sourceSet in sources) {
-            span.setAttribute("endpoint.${sourceSet.key}", sourceSet.value.compactJson)
-        }
 
         logger.info("Sending transport-replace, sources=$sources.")
         if (state != State.ACTIVE) logger.error("Sending transport-replace for session in state $state")
@@ -315,9 +312,6 @@ class JingleSession(
             .setAttribute("state", state.toString())
             .setParent(context)
             .startSpan()
-        for (sourceSet in sources) {
-            span.setAttribute("endpoint.${sourceSet.key}", sourceSet.value.compactJson)
-        }
 
         if (state != State.PENDING) logger.error("Sending session-initiate for session in state $state")
         val contentsWithSources = if (encodeSourcesAsJson) contents else sources.toContents(contents)
