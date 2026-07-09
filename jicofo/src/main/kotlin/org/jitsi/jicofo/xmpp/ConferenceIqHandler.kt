@@ -82,10 +82,6 @@ class ConferenceIqHandler(
             .setAttribute("ready", query.isReady?.toString() ?: "")
             .setAttribute("focusJid", query.focusJid)
             .setAttribute("sessionId", query.sessionId)
-            .setAttribute("machineUID", query.machineUID)
-            .setAttribute("identity", query.identity)
-            .setAttribute("vnode", query.vnode)
-            .setAttribute("token", query.token)
             .startSpan()
         try {
             val room = query.room ?: return IQ.createErrorResponse(
