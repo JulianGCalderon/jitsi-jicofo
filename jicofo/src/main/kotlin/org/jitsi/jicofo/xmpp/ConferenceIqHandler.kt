@@ -19,12 +19,12 @@ package org.jitsi.jicofo.xmpp
 
 import io.opentelemetry.context.Context
 import org.jitsi.jicofo.FocusManager
-import org.jitsi.jicofo.GlobalOTel
 import org.jitsi.jicofo.TaskPools
 import org.jitsi.jicofo.auth.AuthenticationAuthority
 import org.jitsi.jicofo.auth.ErrorFactory
 import org.jitsi.jicofo.metrics.JicofoMetricsContainer
 import org.jitsi.jwt.JitsiToken
+import org.jitsi.tracing.TracingGlobal
 import org.jitsi.utils.OrderedJsonObject
 import org.jitsi.utils.logging2.createLogger
 import org.jitsi.xmpp.extensions.jitsimeet.ConferenceIq
@@ -57,7 +57,7 @@ class ConferenceIqHandler(
     private val connection = xmppProvider.xmppConnection
     private var breakoutAddress: DomainBareJid? = null
     private val logger = createLogger()
-    private val tracer = GlobalOTel.sdk.getTracer("org.jitsi.jicofo.xmpp")
+    private val tracer = TracingGlobal.Companion.sdk.getTracer("org.jitsi.jicofo.xmpp")
 
     init {
         xmppProvider.addListener(this)

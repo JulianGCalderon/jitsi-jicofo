@@ -23,7 +23,6 @@ import io.opentelemetry.api.trace.TraceFlags
 import io.opentelemetry.api.trace.TraceState
 import io.opentelemetry.api.trace.Tracer
 import io.opentelemetry.context.Context
-import org.jitsi.jicofo.GlobalOTel
 import org.jitsi.jicofo.TaskPools
 import org.jitsi.jicofo.conference.source.ConferenceSourceMap
 import org.jitsi.jicofo.xmpp.IqProcessingResult
@@ -31,6 +30,7 @@ import org.jitsi.jicofo.xmpp.createSessionInitiate
 import org.jitsi.jicofo.xmpp.createTransportReplace
 import org.jitsi.jicofo.xmpp.sendIqAndGetResponse
 import org.jitsi.jicofo.xmpp.tryToSendStanza
+import org.jitsi.tracing.TracingGlobal
 import org.jitsi.utils.MediaType
 import org.jitsi.utils.OrderedJsonObject
 import org.jitsi.utils.logging2.createLogger
@@ -75,7 +75,7 @@ class JingleSession(
         addContext("remoteJid", remoteJid.toString())
         addContext("sid", sid)
     }
-    val tracer: Tracer = GlobalOTel.sdk.getTracer("org.jitsi.jicofo.xmpp.jingle")
+    val tracer: Tracer = TracingGlobal.Companion.sdk.getTracer("org.jitsi.jicofo.xmpp.jingle")
 
     private val incomingIqQueue = PacketQueue<JingleIQ>(
         Integer.MAX_VALUE,

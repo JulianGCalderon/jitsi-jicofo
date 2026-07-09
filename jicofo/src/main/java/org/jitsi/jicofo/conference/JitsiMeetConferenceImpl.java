@@ -35,6 +35,7 @@ import org.jitsi.jicofo.visitors.*;
 import org.jitsi.jicofo.xmpp.*;
 import org.jitsi.jicofo.xmpp.UtilKt;
 import org.jitsi.jicofo.xmpp.muc.*;
+import org.jitsi.tracing.*;
 import org.jitsi.utils.*;
 import org.jitsi.utils.logging2.*;
 import org.jitsi.utils.logging2.Logger;
@@ -85,7 +86,7 @@ public class JitsiMeetConferenceImpl
     implements JitsiMeetConference, XmppProvider.Listener
 {
 
-    private final Tracer tracer = GlobalOTel.INSTANCE.getSdk().getTracer("org.jitsi.jicofo.conference");
+    private final Tracer tracer = TracingGlobal.Companion.getSdk().getTracer("org.jitsi.jicofo.conference");
 
     /**
      * Status used by participants when they are switching from a room to a breakout room.

@@ -29,6 +29,7 @@ import org.jitsi.jicofo.jigasi.*;
 import org.jitsi.jicofo.util.*;
 import org.jitsi.jicofo.xmpp.jingle.*;
 import org.jitsi.jicofo.xmpp.muc.*;
+import org.jitsi.tracing.*;
 import org.jitsi.xmpp.extensions.colibri2.*;
 import org.jitsi.xmpp.extensions.jingle.*;
 import org.jitsi.xmpp.extensions.jingle.JingleUtils;
@@ -49,7 +50,7 @@ import java.util.*;
 public class ParticipantInviteRunnable implements Runnable, Cancelable
 {
     private final Logger logger;
-    private final Tracer tracer = GlobalOTel.INSTANCE.getSdk().getTracer("org.jitsi.jicofo.conference");
+    private final Tracer tracer = TracingGlobal.Companion.getSdk().getTracer("org.jitsi.jicofo.conference");
     private final Context rootContext;
 
     /**

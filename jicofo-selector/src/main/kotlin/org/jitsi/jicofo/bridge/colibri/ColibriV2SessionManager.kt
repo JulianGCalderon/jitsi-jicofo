@@ -21,7 +21,6 @@ package org.jitsi.jicofo.bridge.colibri
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings
 import io.opentelemetry.api.trace.Tracer
 import io.opentelemetry.context.Context
-import org.jitsi.jicofo.GlobalOTel.sdk
 import org.jitsi.jicofo.MediaType
 import org.jitsi.jicofo.OctoConfig
 import org.jitsi.jicofo.TaskPools
@@ -37,6 +36,7 @@ import org.jitsi.jicofo.bridge.getNodesBehind
 import org.jitsi.jicofo.bridge.getPathsFrom
 import org.jitsi.jicofo.bridge.removeNode
 import org.jitsi.jicofo.conference.source.EndpointSourceSet
+import org.jitsi.tracing.TracingGlobal
 import org.jitsi.utils.OrderedJsonObject
 import org.jitsi.utils.TemplatedUrl
 import org.jitsi.utils.event.AsyncEventEmitter
@@ -75,7 +75,7 @@ class ColibriV2SessionManager(
     parentLogger: Logger
 ) : ColibriSessionManager, Cascade<Colibri2Session, Colibri2Session.Relay> {
     private val logger = createChildLogger(parentLogger)
-    private val tracer: Tracer = sdk.getTracer("org.jitsi.jicofo.colibri")
+    private val tracer: Tracer = TracingGlobal.Companion.sdk.getTracer("org.jitsi.jicofo.colibri")
 
     private val eventEmitter = AsyncEventEmitter<ColibriSessionManager.Listener>(TaskPools.ioPool)
     override fun addListener(listener: ColibriSessionManager.Listener) = eventEmitter.addHandler(listener)

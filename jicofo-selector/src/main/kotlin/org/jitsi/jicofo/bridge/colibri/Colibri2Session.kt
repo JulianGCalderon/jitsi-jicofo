@@ -20,7 +20,6 @@ package org.jitsi.jicofo.bridge.colibri
 import io.opentelemetry.api.trace.Span
 import io.opentelemetry.api.trace.Tracer
 import io.opentelemetry.context.Context
-import org.jitsi.jicofo.GlobalOTel.sdk
 import org.jitsi.jicofo.OctoConfig
 import org.jitsi.jicofo.TranscriptionConfig
 import org.jitsi.jicofo.bridge.Bridge
@@ -30,6 +29,7 @@ import org.jitsi.jicofo.codec.CodecUtil
 import org.jitsi.jicofo.codec.Config
 import org.jitsi.jicofo.conference.source.ConferenceSourceMap
 import org.jitsi.jicofo.conference.source.EndpointSourceSet
+import org.jitsi.tracing.TracingGlobal
 import org.jitsi.utils.MediaType
 import org.jitsi.utils.OrderedJsonObject
 import org.jitsi.utils.TemplatedUrl
@@ -72,7 +72,7 @@ class Colibri2Session(
     private val logger = createChildLogger(parentLogger).apply {
         bridge.jid.resourceOrNull?.toString()?.let { addContext("bridge", it) }
     }
-    private val tracer: Tracer = sdk.getTracer("org.jitsi.jicofo.colibri")
+    private val tracer: Tracer = TracingGlobal.Companion.sdk.getTracer("org.jitsi.jicofo.colibri")
     private val xmppConnection = colibriSessionManager.xmppConnection
     val id = UUID.randomUUID().toString()
 
