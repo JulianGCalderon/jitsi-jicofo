@@ -2586,7 +2586,7 @@ public class JitsiMeetConferenceImpl
 
                     try
                     {
-                        expireBridgeSessions(Context.root());
+                        expireBridgeSessions(context);
                     }
                     finally
                     {
