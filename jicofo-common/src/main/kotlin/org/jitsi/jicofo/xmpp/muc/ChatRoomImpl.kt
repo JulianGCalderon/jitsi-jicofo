@@ -329,6 +329,7 @@ class ChatRoomImpl(
             lastPresenceSent = null
             logger.removeContext("meeting_id")
             avModerationByMediaType.values.forEach { it.reset() }
+            transientPresenceExtensions.clear()
         }
     }
 
@@ -348,13 +349,15 @@ class ChatRoomImpl(
 
         val span = Span.fromContextOrNull(context)
         if (span != null) {
-            transientPresenceExtensions.add(
-                TraceParent(
-                    span.spanContext.traceId,
-                    span.spanContext.spanId,
-                    span.spanContext.traceFlags.asHex()
+            synchronized(transientPresenceExtensions) {
+                transientPresenceExtensions.add(
+                    TraceParent(
+                        span.spanContext.traceId,
+                        span.spanContext.spanId,
+                        span.spanContext.traceFlags.asHex()
+                    )
                 )
-            )
+            }
         }
         muc.createOrJoin(nickname)
         val config = muc.configurationForm
