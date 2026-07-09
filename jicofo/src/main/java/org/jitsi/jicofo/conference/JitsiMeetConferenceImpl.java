@@ -791,19 +791,11 @@ public class JitsiMeetConferenceImpl
      */
     private void onMemberJoined(@NotNull ChatRoomMember chatRoomMember)
     {
-        Span span = tracer.spanBuilder("muc.member-joined")
-                .setAttribute("member.name", chatRoomMember.getName())
-                .setAttribute("member.id", Objects.toString(chatRoomMember.getJid()))
-                .setAttribute("member.role", chatRoomMember.getRole().toString())
-                .setAttribute("member.region", StringUtils.defaultString(chatRoomMember.getRegion()))
-                .setAttribute("member.stats-id", Objects.toString(chatRoomMember.getStatsId()))
-                .setAttribute("member.audioMuted", chatRoomMember.isAudioMuted())
-                .setAttribute("member.videoMuted", chatRoomMember.isVideoMuted())
-                .setAttribute("member.isJibri", chatRoomMember.isJibri())
-                .setAttribute("member.isJigasi", chatRoomMember.isJigasi())
-                .setAttribute("member.isTranscriber", chatRoomMember.isTranscriber())
-                .setAttribute("room.id", chatRoomMember.getChatRoom().getRoomJid().toString())
-                .startSpan();
+        Span span = TracingHelper.Companion.setMemberSpan(
+            tracer.spanBuilder("muc.member-joined"),
+            chatRoomMember
+        ).startSpan();
+
         Context context = span.storeInContext(Context.root());
         try
         {
@@ -1076,19 +1068,10 @@ public class JitsiMeetConferenceImpl
 
     private void onMemberLeft(ChatRoomMember chatRoomMember)
     {
-        Span span = tracer.spanBuilder("muc.member-left")
-                .setAttribute("member.name", chatRoomMember.getName())
-                .setAttribute("member.id", Objects.toString(chatRoomMember.getJid()))
-                .setAttribute("member.role", chatRoomMember.getRole().toString())
-                .setAttribute("member.region", StringUtils.defaultString(chatRoomMember.getRegion()))
-                .setAttribute("member.stats-id", Objects.toString(chatRoomMember.getStatsId()))
-                .setAttribute("member.audioMuted", chatRoomMember.isAudioMuted())
-                .setAttribute("member.videoMuted", chatRoomMember.isVideoMuted())
-                .setAttribute("member.isJibri", chatRoomMember.isJibri())
-                .setAttribute("member.isJigasi", chatRoomMember.isJigasi())
-                .setAttribute("member.isTranscriber", chatRoomMember.isTranscriber())
-                .setAttribute("room.id", chatRoomMember.getChatRoom().getRoomJid().toString())
-                .startSpan();
+        Span span = TracingHelper.Companion.setMemberSpan(
+            tracer.spanBuilder("muc.member-left"),
+            chatRoomMember
+        ).startSpan();
         Context context = span.storeInContext(Context.root());
         try
         {
@@ -2564,16 +2547,10 @@ public class JitsiMeetConferenceImpl
                     Participant p = participants.values().stream().findFirst().orElse(null);
                     logger.info("Timing out single participant: " + p.getChatMember().getName());
 
-                    Span span = tracer.spanBuilder("conference.timeout")
-                        .setAttribute("member.name", p.getChatMember().getName())
-                        .setAttribute("member.id", Objects.toString(p.getChatMember().getJid()))
-                        .setAttribute("member.role", p.getChatMember().getRole().toString())
-                        .setAttribute("member.region", StringUtils.defaultString(p.getChatMember().getRegion()))
-                        .setAttribute("member.stats-id", Objects.toString(p.getChatMember().getStatsId()))
-                        .setAttribute("member.audioMuted", p.getChatMember().isAudioMuted())
-                        .setAttribute("member.videoMuted", p.getChatMember().isVideoMuted())
-                        .setAttribute("room.id", p.getChatMember().getChatRoom().getRoomJid().toString())
-                        .startSpan();
+                    Span span = TracingHelper.Companion.setMemberSpan(
+                        tracer.spanBuilder("conference.timeout"),
+                        p.getChatMember()
+                    ).startSpan();
                     Context context = span.storeInContext(Context.root());
                     terminateParticipant(
                             p,
