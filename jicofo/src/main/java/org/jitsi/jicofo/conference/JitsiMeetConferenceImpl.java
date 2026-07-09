@@ -2584,8 +2584,14 @@ public class JitsiMeetConferenceImpl
                             /* not reinviting */ false,
                             context);
 
-                    expireBridgeSessions(Context.root());
-                    span.end();
+                    try
+                    {
+                        expireBridgeSessions(Context.root());
+                    }
+                    finally
+                    {
+                        span.end();
+                    }
                 }
                 else
                 {
@@ -2748,8 +2754,14 @@ public class JitsiMeetConferenceImpl
                     .startSpan();
             Context context = span.storeInContext(Context.root());
             logger.info("Room destroyed with reason=" + reason);
-            stop(context);
-            span.end();
+            try
+            {
+                stop(context);
+            }
+            finally
+            {
+                span.end();
+            }
         }
 
         @Override

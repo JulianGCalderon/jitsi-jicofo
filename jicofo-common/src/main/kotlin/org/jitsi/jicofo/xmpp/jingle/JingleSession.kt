@@ -141,49 +141,56 @@ class JingleSession(
             .startSpan()
         context = span.storeInContext(context)
 
-        val error = when (iq.action) {
-            JingleAction.SESSION_ACCEPT -> {
-                // The session needs to be marked as active early to allow code executing as part of onSessionAccept
-                // to proceed (e.g. to signal source updates).
-                state = State.ACTIVE
-                val error = requestHandler.onSessionAccept(this, iq.contentList, context)
-                if (error != null) state = State.ENDED
-                error
+        try {
+            val error = when (iq.action) {
+                JingleAction.SESSION_ACCEPT -> {
+                    // The session needs to be marked as active early to allow code executing as part of onSessionAccept
+                    // to proceed (e.g. to signal source updates).
+                    state = State.ACTIVE
+                    val error = requestHandler.onSessionAccept(this, iq.contentList, context)
+                    if (error != null) state = State.ENDED
+                    error
+                }
+
+                JingleAction.SESSION_INFO -> requestHandler.onSessionInfo(this, iq)
+
+                JingleAction.SESSION_TERMINATE -> requestHandler.onSessionTerminate(this, iq).also {
+                    state = State.ENDED
+                }
+
+                JingleAction.TRANSPORT_ACCEPT -> requestHandler.onTransportAccept(this, iq.contentList, context)
+
+                JingleAction.TRANSPORT_INFO -> requestHandler.onTransportInfo(this, iq.contentList)
+
+                JingleAction.TRANSPORT_REJECT -> {
+                    requestHandler.onTransportReject(this, iq)
+                    null
+                }
+
+                JingleAction.ADDSOURCE, JingleAction.SOURCEADD -> requestHandler.onAddSource(this, iq.contentList)
+
+                JingleAction.REMOVESOURCE, JingleAction.SOURCEREMOVE -> requestHandler.onRemoveSource(
+                    this,
+                    iq.contentList
+                )
+
+                else -> {
+                    logger.warn("unsupported action ${iq.action}")
+                    StanzaError.getBuilder(StanzaError.Condition.feature_not_implemented)
+                        .setConditionText("Unsupported 'action'").build()
+                }
             }
 
-            JingleAction.SESSION_INFO -> requestHandler.onSessionInfo(this, iq)
-            JingleAction.SESSION_TERMINATE -> requestHandler.onSessionTerminate(this, iq).also {
-                state = State.ENDED
+            val response = if (error == null) {
+                IQ.createResultIQ(iq)
+            } else {
+                logger.info("Returning error: request=${iq.toXML()}, error=${error.toXML()} ")
+                IQ.createErrorResponse(iq, error)
             }
-
-            JingleAction.TRANSPORT_ACCEPT -> requestHandler.onTransportAccept(this, iq.contentList, context)
-            JingleAction.TRANSPORT_INFO -> requestHandler.onTransportInfo(this, iq.contentList)
-            JingleAction.TRANSPORT_REJECT -> {
-                requestHandler.onTransportReject(this, iq)
-                null
-            }
-
-            JingleAction.ADDSOURCE, JingleAction.SOURCEADD -> requestHandler.onAddSource(this, iq.contentList)
-            JingleAction.REMOVESOURCE, JingleAction.SOURCEREMOVE -> requestHandler.onRemoveSource(
-                this,
-                iq.contentList
-            )
-
-            else -> {
-                logger.warn("unsupported action ${iq.action}")
-                StanzaError.getBuilder(StanzaError.Condition.feature_not_implemented)
-                    .setConditionText("Unsupported 'action'").build()
-            }
+            connection.tryToSendStanza(response)
+        } finally {
+            span.end()
         }
-
-        val response = if (error == null) {
-            IQ.createResultIQ(iq)
-        } else {
-            logger.info("Returning error: request=${iq.toXML()}, error=${error.toXML()} ")
-            IQ.createErrorResponse(iq, error)
-        }
-        connection.tryToSendStanza(response)
-        span.end()
     }
 
     fun terminate(
@@ -251,15 +258,17 @@ class JingleSession(
         }
 
         JingleStats.stanzaSent(jingleIq.action)
-        val response = connection.sendIqAndGetResponse(jingleIq)
-        val ret = if (response?.type == IQ.Type.result) {
-            true
-        } else {
-            logger.error("Unexpected response to transport-replace: ${response?.toXML()}")
-            false
+        try {
+            val response = connection.sendIqAndGetResponse(jingleIq)
+            return if (response?.type == IQ.Type.result) {
+                true
+            } else {
+                logger.error("Unexpected response to transport-replace: ${response?.toXML()}")
+                false
+            }
+        } finally {
+            span.end()
         }
-        span.end()
-        return ret
     }
 
     /**
@@ -329,17 +338,19 @@ class JingleSession(
 
         jingleIqRequestHandler.registerSession(this)
         JingleStats.stanzaSent(sessionInitiate.action)
-        val response = connection.sendIqAndGetResponse(sessionInitiate)
-        // We treat a timeout (null) as success. This prevents failures in case the client delays processing, observed
-        // when joining a large conference. The session will be pending until we receive session-accept.
-        val ret = if (response == null || response.type == IQ.Type.result) {
-            true
-        } else {
-            logger.error("Unexpected response to session-initiate: $response")
-            false
+        try {
+            val response = connection.sendIqAndGetResponse(sessionInitiate)
+            // We treat a timeout (null) as success. This prevents failures in case the client delays processing, observed
+            // when joining a large conference. The session will be pending until we receive session-accept.
+            return if (response == null || response.type == IQ.Type.result) {
+                true
+            } else {
+                logger.error("Unexpected response to session-initiate: $response")
+                false
+            }
+        } finally {
+            span.end()
         }
-        span.end()
-        return ret
     }
 
     private fun createAddSourceIq(sources: ConferenceSourceMap) = JingleIQ(JingleAction.SOURCEADD, sid).apply {
