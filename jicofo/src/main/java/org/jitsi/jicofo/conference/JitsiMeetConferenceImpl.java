@@ -17,10 +17,8 @@
  */
 package org.jitsi.jicofo.conference;
 
-import io.opentelemetry.context.Context;
-import org.apache.commons.lang3.StringUtils;
-import io.opentelemetry.api.trace.Span;
-import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.api.trace.*;
+import io.opentelemetry.context.*;
 import kotlin.*;
 import org.jetbrains.annotations.*;
 import org.jitsi.jicofo.*;
@@ -29,6 +27,7 @@ import org.jitsi.jicofo.auth.*;
 import org.jitsi.jicofo.bridge.*;
 import org.jitsi.jicofo.bridge.colibri.*;
 import org.jitsi.jicofo.conference.source.*;
+import org.jitsi.jicofo.jibri.*;
 import org.jitsi.jicofo.util.*;
 import org.jitsi.jicofo.version.*;
 import org.jitsi.jicofo.visitors.*;
@@ -39,14 +38,10 @@ import org.jitsi.tracing.*;
 import org.jitsi.utils.*;
 import org.jitsi.utils.logging2.*;
 import org.jitsi.utils.logging2.Logger;
-import org.jitsi.xmpp.extensions.TraceParent;
 import org.jitsi.xmpp.extensions.colibri2.*;
 import org.jitsi.xmpp.extensions.jibri.*;
 import org.jitsi.xmpp.extensions.jingle.*;
-
 import org.jitsi.xmpp.extensions.jitsimeet.*;
-import org.jitsi.jicofo.jibri.*;
-
 import org.jitsi.xmpp.extensions.visitors.*;
 import org.jivesoftware.smack.*;
 import org.jivesoftware.smack.packet.*;
@@ -63,10 +58,10 @@ import java.util.concurrent.atomic.*;
 import java.util.logging.*;
 import java.util.stream.*;
 
-import static org.jitsi.jicofo.conference.ConferenceUtilKt.getVisitorMucJid;
+import static org.apache.commons.lang3.StringUtils.*;
+import static org.jitsi.jicofo.conference.ConferenceUtilKt.*;
 import static org.jitsi.jicofo.xmpp.IqProcessingResult.*;
-import static org.apache.commons.lang3.StringUtils.isBlank;
-import static org.jitsi.jicofo.xmpp.MuteIqHandlerKt.createMuteIq;
+import static org.jitsi.jicofo.xmpp.MuteIqHandlerKt.*;
 
 /**
  * Represents a Jitsi Meet conference. Manages the Jingle sessions with the
@@ -792,9 +787,12 @@ public class JitsiMeetConferenceImpl
     private void onMemberJoined(@NotNull ChatRoomMember chatRoomMember)
     {
         Span span = TracingHelper.Companion.setMemberSpan(
-            tracer.spanBuilder("muc.member-joined"),
-            chatRoomMember
-        ).startSpan();
+                tracer.spanBuilder("muc.member-joined"),
+                chatRoomMember
+            )
+            .setAttribute("room.name", roomName.getLocalpart().toString())
+            .setAttribute("conference.id", Objects.requireNonNull(getMeetingId()))
+            .startSpan();
 
         Context context = span.storeInContext(Context.root());
         try
@@ -1069,9 +1067,12 @@ public class JitsiMeetConferenceImpl
     private void onMemberLeft(ChatRoomMember chatRoomMember)
     {
         Span span = TracingHelper.Companion.setMemberSpan(
-            tracer.spanBuilder("muc.member-left"),
-            chatRoomMember
-        ).startSpan();
+                tracer.spanBuilder("muc.member-left"),
+                chatRoomMember
+            )
+            .setAttribute("room.name", roomName.getLocalpart().toString())
+            .setAttribute("conference.id", Objects.requireNonNull(getMeetingId()))
+            .startSpan();
         Context context = span.storeInContext(Context.root());
         try
         {
@@ -2548,9 +2549,12 @@ public class JitsiMeetConferenceImpl
                     logger.info("Timing out single participant: " + p.getChatMember().getName());
 
                     Span span = TracingHelper.Companion.setMemberSpan(
-                        tracer.spanBuilder("conference.timeout"),
-                        p.getChatMember()
-                    ).startSpan();
+                            tracer.spanBuilder("conference.timeout"),
+                            p.getChatMember()
+                        )
+                        .setAttribute("room.name", roomName.getLocalpart().toString())
+                        .setAttribute("conference.id", Objects.requireNonNull(getMeetingId()))
+                        .startSpan();
                     Context context = span.storeInContext(Context.root());
                     terminateParticipant(
                             p,
@@ -2726,9 +2730,10 @@ public class JitsiMeetConferenceImpl
         public void roomDestroyed(String reason)
         {
             Span span = tracer.spanBuilder("conference.room-destroyed")
-                    .setAttribute("room.id", chatRoom.getRoomJid().toString())
-                    .setAttribute("reason", (reason != null) ? reason : "")
-                    .startSpan();
+                .setAttribute("room.name", roomName.getLocalpart().toString())
+                .setAttribute("conference.id", Objects.toString(getMeetingId()))
+                .setAttribute("reason", Objects.toString(reason))
+                .startSpan();
             Context context = span.storeInContext(Context.root());
             logger.info("Room destroyed with reason=" + reason);
             try

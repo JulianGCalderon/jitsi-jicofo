@@ -36,6 +36,7 @@ import org.jxmpp.jid.DomainBareJid
 import org.jxmpp.jid.EntityBareJid
 import org.jxmpp.jid.impl.JidCreate
 import java.lang.Boolean.parseBoolean
+import java.util.Objects
 import org.jitsi.jicofo.visitors.VisitorsConfig.Companion.config as visitorsConfig
 
 /**
@@ -76,12 +77,9 @@ class ConferenceIqHandler(
     /** Handle a [ConferenceIq] synchronously and return a response. */
     fun handleConferenceIq(query: ConferenceIq): IQ {
         val span = tracer.spanBuilder("xmpp.conference")
-            .setAttribute("id", query.stanzaId)
-            .setAttribute("from", query.from?.toString() ?: "")
-            .setAttribute("room", query.room?.toString() ?: "")
-            .setAttribute("ready", query.isReady?.toString() ?: "")
-            .setAttribute("focusJid", query.focusJid)
-            .setAttribute("sessionId", query.sessionId)
+            .setAttribute("client.jid.local", Objects.toString(query.from.localpartOrNull))
+            .setAttribute("client.jid.resource", Objects.toString(query.from.resourceOrNull))
+            .setAttribute("room.name", Objects.toString(query.room.localpartOrNull))
             .startSpan()
         try {
             val room = query.room ?: return IQ.createErrorResponse(

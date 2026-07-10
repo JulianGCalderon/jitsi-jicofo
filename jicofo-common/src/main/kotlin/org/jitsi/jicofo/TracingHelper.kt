@@ -19,23 +19,21 @@
 package org.jitsi.jicofo
 
 import io.opentelemetry.api.trace.SpanBuilder
-import org.apache.commons.lang3.StringUtils
 import org.jitsi.jicofo.xmpp.muc.ChatRoomMember
 import java.util.*
 
 class TracingHelper {
     companion object {
-        fun setMemberSpan(builder: SpanBuilder, member: ChatRoomMember): SpanBuilder =
-            builder.setAttribute("member.name", member.name)
-                .setAttribute("member.id", Objects.toString(member.jid))
-                .setAttribute("member.role", member.role.toString())
-                .setAttribute("member.region", StringUtils.defaultString(member.region))
-                .setAttribute("member.stats-id", Objects.toString(member.statsId))
-                .setAttribute("member.audioMuted", member.isAudioMuted)
-                .setAttribute("member.videoMuted", member.isVideoMuted)
-                .setAttribute("member.isJibri", member.isJibri)
-                .setAttribute("member.isJigasi", member.isJigasi)
-                .setAttribute("member.isTranscriber", member.isTranscriber)
-                .setAttribute("room.id", member.chatRoom.roomJid.toString())
+        fun setMemberSpan(builder: SpanBuilder, member: ChatRoomMember): SpanBuilder = builder
+            .setAttribute("member.name", member.name)
+            .setAttribute("member.jid.local", Objects.toString(member.jid?.localpartOrNull))
+            .setAttribute("member.jid.resource", Objects.toString(member.jid?.resourceOrNull))
+            .setAttribute("member.role", member.role.toString())
+            .setAttribute("member.region", Objects.toString(member.region))
+            .setAttribute("member.isAudioMuted", member.isAudioMuted)
+            .setAttribute("member.isVideoMuted", member.isVideoMuted)
+            .setAttribute("member.isJibri", member.isJibri)
+            .setAttribute("member.isJigasi", member.isJigasi)
+            .setAttribute("member.isTranscriber", member.isTranscriber)
     }
 }

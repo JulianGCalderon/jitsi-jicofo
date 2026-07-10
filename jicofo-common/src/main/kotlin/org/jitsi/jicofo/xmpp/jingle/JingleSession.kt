@@ -132,12 +132,11 @@ class JingleSession(
         }
         val span = tracer.spanBuilder("jingle.${iq.action}")
             .setParent(context)
-            .setAttribute("sessionId", iq.sid)
             .setAttribute("action", Objects.toString(iq.action))
-            .setAttribute("initiator", Objects.toString(iq.initiator))
-            .setAttribute("responder", Objects.toString(iq.responder))
-            .setAttribute("reason", Objects.toString(iq.reason))
-            .setAttribute("sessionInfo.type", Objects.toString(iq.sessionInfo?.type))
+            .setAttribute("initiator.jid.local", Objects.toString(iq.initiator.localpartOrNull))
+            .setAttribute("responder.jid.local", Objects.toString(iq.responder.localpartOrNull))
+            .setAttribute("responder.jid.resource", Objects.toString(iq.responder.resourceOrNull))
+            .setAttribute("session.id", iq.sid)
             .startSpan()
         context = span.storeInContext(context)
 
@@ -236,9 +235,9 @@ class JingleSession(
         context: Context = Context.root()
     ): Boolean {
         val span = tracer.spanBuilder("jingle.replace-transport")
-            .setAttribute("to", remoteJid.toString())
-            .setAttribute("sid", sid)
-            .setAttribute("state", state.toString())
+            .setAttribute("remote.jid.local", Objects.toString(remoteJid.localpartOrNull))
+            .setAttribute("remote.jid.resource", Objects.toString(remoteJid.resourceOrNull))
+            .setAttribute("session.id", sid)
             .setParent(context)
             .startSpan()
 
@@ -307,9 +306,9 @@ class JingleSession(
         context: Context = Context.root(),
     ): Boolean {
         val span = tracer.spanBuilder("jingle.initiate-session")
-            .setAttribute("to", remoteJid.toString())
-            .setAttribute("sid", sid)
-            .setAttribute("state", state.toString())
+            .setAttribute("responder.jid.local", Objects.toString(remoteJid.localpartOrNull))
+            .setAttribute("responder.jid.resource", Objects.toString(remoteJid.resourceOrNull))
+            .setAttribute("session.id", sid)
             .setParent(context)
             .startSpan()
 

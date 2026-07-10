@@ -56,6 +56,7 @@ import org.jivesoftware.smack.packet.IQ
 import org.jivesoftware.smackx.muc.MUCRole
 import java.net.URI
 import java.util.Collections.singletonList
+import java.util.Objects
 import java.util.UUID
 
 /** Represents a colibri2 session with one specific bridge. */
@@ -141,8 +142,13 @@ class Colibri2Session(
         context: Context = Context.root()
     ) {
         val span = tracer.spanBuilder("colibri.update-participant")
-            .setAttribute("participant.id", participant.id)
-            .setAttribute("session.bridge", participant.session.bridge.jid.toString())
+            .setAttribute("participant.id", Objects.toString(participant.id))
+            .setAttribute("conference.id", Objects.toString(colibriSessionManager.meetingId))
+            .setAttribute("bridge.region", Objects.toString(bridge.region))
+            .setAttribute("bridge.relayId", Objects.toString(relayId))
+            .setAttribute("bridge.jid.resource", Objects.toString(bridge.jid.resourceOrNull))
+            .setAttribute("bridge.version", Objects.toString(bridge.fullVersion))
+            .setAttribute("bridge.stress", String.format("%.2f", bridge.correctedStress))
             .setParent(context)
             .startSpan()
         try {

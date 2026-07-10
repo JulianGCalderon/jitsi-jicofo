@@ -361,8 +361,8 @@ class ColibriV2SessionManager(
     @Throws(ColibriAllocationFailedException::class, BridgeSelectionFailedException::class)
     override fun allocate(participant: ParticipantAllocationParameters, context: Context): ColibriAllocation {
         val span = tracer.spanBuilder("colibri.allocate")
-            .setAttribute("participant.id", participant.id)
-            .setAttribute("participant.region", Objects.toString(participant.region))
+            .setAttribute("participant.id", Objects.toString(participant.id))
+            .setAttribute("conference.id", Objects.toString(meetingId))
             .setParent(context)
             .startSpan()
         val context = span.storeInContext(context)
@@ -394,6 +394,14 @@ class ColibriV2SessionManager(
                     eventEmitter.fireEvent { bridgeSelectionFailed() }
                     throw BridgeSelectionFailedException()
                 }
+
+                span
+                    .setAttribute("bridge.region", Objects.toString(bridge.region))
+                    .setAttribute("bridge.relayId", Objects.toString(bridge.relayId))
+                    .setAttribute("bridge.jid.resource", Objects.toString(bridge.jid.resourceOrNull))
+                    .setAttribute("bridge.version", Objects.toString(bridge.fullVersion))
+                    .setAttribute("bridge.stress", String.format("%.2f", bridge.correctedStress))
+
                 eventEmitter.fireEvent { bridgeSelectionSucceeded() }
                 if (sessions.isNotEmpty() && sessions.none { it.value.bridge == bridge }) {
                     // There is an existing session, and this is a new bridge.

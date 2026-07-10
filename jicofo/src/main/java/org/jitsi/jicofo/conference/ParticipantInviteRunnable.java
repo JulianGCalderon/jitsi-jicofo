@@ -153,8 +153,13 @@ public class ParticipantInviteRunnable implements Runnable, Cancelable
     @Override
     public void run()
     {
-        Span span = tracer.spanBuilder("muc.participant-invite")
+        Span span = TracingHelper.Companion.setMemberSpan(
+                tracer.spanBuilder("muc.participant-invite"),
+                participant.getChatMember()
+            )
             .setParent(rootContext)
+            .setAttribute("room.name", meetConference.getRoomName().getLocalpart().toString())
+            .setAttribute("conference.id", Objects.toString(meetConference.getMeetingId()))
             .startSpan();
         Context context = span.storeInContext(rootContext);
         try
