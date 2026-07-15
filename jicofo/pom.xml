@@ -172,6 +172,20 @@
       <artifactId>jicoco-test-kotlin</artifactId>
       <scope>test</scope>
     </dependency>
+    <dependency>
+      <groupId>${project.groupId}</groupId>
+      <artifactId>jicofo-common</artifactId>
+      <version>${project.version}</version>
+      <type>test-jar</type>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>${project.groupId}</groupId>
+      <artifactId>jicofo-selector</artifactId>
+      <version>${project.version}</version>
+      <type>test-jar</type>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
   <build>
     <plugins>
@@ -426,6 +440,19 @@
                 <goals>
                   <goal>report</goal>
                 </goals>
+              </execution>
+              <!-- Aggregate report over all jicofo modules. This is the report to look at: tests in one module
+                   exercise classes from the other modules, so the per-module reports under-count coverage.
+                   Output: jicofo/target/site/jacoco-aggregate/ -->
+              <execution>
+                <id>report-aggregate</id>
+                <phase>test</phase>
+                <goals>
+                  <goal>report-aggregate</goal>
+                </goals>
+                <configuration>
+                  <includeCurrentProject>true</includeCurrentProject>
+                </configuration>
               </execution>
             </executions>
           </plugin>
