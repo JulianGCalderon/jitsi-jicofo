@@ -2716,7 +2716,19 @@ public class JitsiMeetConferenceImpl
         public void roomDestroyed(String reason)
         {
             logger.info("Room destroyed with reason=" + reason);
-            stop();
+            Span span = tracer.spanBuilder("conference.room-destroyed")
+                    .setAllAttributes(TracingUtil.roomAttributes(chatRoom))
+                    .setAttribute("conference.id", Objects.toString(meetingId))
+                    .setAttribute("reason", Objects.toString(reason))
+                    .startSpan();
+            try (Scope s = span.makeCurrent())
+            {
+                stop();
+            }
+            finally
+            {
+                span.end();
+            }
         }
 
         @Override
@@ -2757,7 +2769,19 @@ public class JitsiMeetConferenceImpl
         @Override
         public void memberLeft(@NotNull ChatRoomMember member)
         {
-            onMemberLeft(member);
+            Span span = tracer.spanBuilder("conference.member-left")
+                    .setAllAttributes(TracingUtil.memberAttributes(member))
+                    .setAllAttributes(TracingUtil.roomAttributes(chatRoom))
+                    .setAttribute("conference.id", Objects.toString(meetingId))
+                    .startSpan();
+            try (Scope s = span.makeCurrent())
+            {
+                onMemberLeft(member);
+            }
+            finally
+            {
+                span.end();
+            }
         }
 
         @Override
