@@ -2732,7 +2732,7 @@ public class JitsiMeetConferenceImpl
             // Run in the IO pool because feature discovery may send disco#info and block for a response, and shouldn't
             // run in Smack's thread.
             TaskPools.getIoPool().submit(() -> {
-                Span span = tracer.spanBuilder("conference.memberJoined")
+                Span span = tracer.spanBuilder("conference.member-joined")
                         .setAllAttributes(TracingUtil.memberAttributes(member))
                         .setAllAttributes(TracingUtil.roomAttributes(chatRoom))
                         .setAttribute("conference.id", Objects.toString(meetingId))
