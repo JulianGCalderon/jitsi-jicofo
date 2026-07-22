@@ -17,6 +17,8 @@
  */
 package org.jitsi.jicofo.conference;
 
+import io.opentelemetry.api.trace.*;
+import io.opentelemetry.context.*;
 import kotlin.*;
 import org.jetbrains.annotations.*;
 import org.jitsi.jicofo.*;
@@ -27,6 +29,7 @@ import org.jitsi.jicofo.bridge.colibri.*;
 import org.jitsi.jicofo.conference.source.*;
 import org.jitsi.jicofo.conference.translation.*;
 import org.jitsi.jicofo.util.*;
+import org.jitsi.jicofo.util.TracingUtil;
 import org.jitsi.jicofo.version.*;
 import org.jitsi.jicofo.visitors.*;
 import org.jitsi.jicofo.xmpp.*;
@@ -34,6 +37,7 @@ import org.jitsi.jicofo.xmpp.UtilKt;
 import org.jitsi.jicofo.xmpp.muc.*;
 import com.fasterxml.jackson.databind.*;
 import com.fasterxml.jackson.databind.node.*;
+import org.jitsi.tracing.*;
 import org.jitsi.utils.*;
 import org.jitsi.utils.logging2.*;
 import org.jitsi.utils.logging2.Logger;
@@ -103,6 +107,7 @@ public class JitsiMeetConferenceImpl
 
     @NotNull
     private final Logger logger;
+    private final Tracer tracer = TracingGlobal.Companion.getSdk().getTracer("org.jitsi.jicofo.conference");
 
     /**
      * The instance of conference configuration.
@@ -2726,7 +2731,21 @@ public class JitsiMeetConferenceImpl
         {
             // Run in the IO pool because feature discovery may send disco#info and block for a response, and shouldn't
             // run in Smack's thread.
-            TaskPools.getIoPool().submit(() -> onMemberJoined(member));
+            TaskPools.getIoPool().submit(() -> {
+                Span span = tracer.spanBuilder("conference.memberJoined")
+                        .setAllAttributes(TracingUtil.memberAttributes(member))
+                        .setAllAttributes(TracingUtil.roomAttributes(chatRoom))
+                        .setAttribute("conference.id", Objects.toString(meetingId))
+                        .startSpan();
+                try (Scope s = span.makeCurrent())
+                {
+                    onMemberJoined(member);
+                }
+                finally
+                {
+                    span.end();
+                }
+            });
         }
 
         @Override
