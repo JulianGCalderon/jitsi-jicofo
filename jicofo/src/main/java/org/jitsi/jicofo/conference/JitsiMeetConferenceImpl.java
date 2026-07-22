@@ -976,7 +976,7 @@ public class JitsiMeetConferenceImpl
         );
 
         participant.setInviteRunnable(channelAllocator);
-        TaskPools.getIoPool().execute(channelAllocator);
+        TaskPools.getIoPool().execute(Context.current().wrap(channelAllocator));
     }
 
     @NotNull EndpointSourceSet getSourcesForParticipant(@NotNull Participant participant)
