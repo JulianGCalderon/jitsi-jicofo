@@ -792,6 +792,24 @@ class ColibriV2SessionManager(
         sources: EndpointSourceSet?,
         initialLastN: InitialLastN?,
         suppressLocalBridgeUpdate: Boolean
+    ) {
+        val span: Span = tracer.spanBuilder("colibri.update-participant")
+            .startSpan()
+        try {
+            span.makeCurrent().use { s ->
+                return doUpdateParticipant(participantId, transport, sources, initialLastN, suppressLocalBridgeUpdate)
+            }
+        } finally {
+            span.end()
+        }
+    }
+
+    fun doUpdateParticipant(
+        participantId: String,
+        transport: IceUdpTransportPacketExtension?,
+        sources: EndpointSourceSet?,
+        initialLastN: InitialLastN?,
+        suppressLocalBridgeUpdate: Boolean
     ) = synchronized(syncRoot) {
         logger.debug("Updating $participantId with transport=$transport, sources=$sources")
 
