@@ -21,6 +21,7 @@ package org.jitsi.jicofo.bridge.colibri
 import com.fasterxml.jackson.databind.node.JsonNodeFactory
 import com.fasterxml.jackson.databind.node.ObjectNode
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings
+import io.opentelemetry.api.trace.Span
 import org.jitsi.jicofo.MediaType
 import org.jitsi.jicofo.OctoConfig
 import org.jitsi.jicofo.TaskPools
@@ -38,6 +39,7 @@ import org.jitsi.jicofo.bridge.getNodesBehind
 import org.jitsi.jicofo.bridge.getPathsFrom
 import org.jitsi.jicofo.bridge.removeNode
 import org.jitsi.jicofo.conference.source.EndpointSourceSet
+import org.jitsi.tracing.TracingGlobal
 import org.jitsi.utils.TemplatedUrl
 import org.jitsi.utils.event.AsyncEventEmitter
 import org.jitsi.utils.logging2.Logger
@@ -111,6 +113,7 @@ class ColibriV2SessionManager(
     parentLogger: Logger
 ) : ColibriSessionManager, Cascade<Colibri2Session, Colibri2Session.Relay> {
     private val logger = createChildLogger(parentLogger)
+    private val tracer = TracingGlobal.sdk.getTracer("org.jitsi.jicofo.colibri")
 
     private val eventEmitter = AsyncEventEmitter<ColibriSessionManager.Listener>(TaskPools.ioPool)
     override fun addListener(listener: ColibriSessionManager.Listener) = eventEmitter.addHandler(listener)
@@ -497,6 +500,19 @@ class ColibriV2SessionManager(
 
     @Throws(ColibriAllocationFailedException::class, BridgeSelectionFailedException::class)
     override fun allocate(participant: ParticipantAllocationParameters): ColibriAllocation {
+        val span: Span = tracer.spanBuilder("colibri.allocate")
+            .startSpan()
+        try {
+            span.makeCurrent().use { s ->
+                return doAllocate(participant)
+            }
+        } finally {
+            span.end()
+        }
+    }
+
+    @Throws(ColibriAllocationFailedException::class, BridgeSelectionFailedException::class)
+    fun doAllocate(participant: ParticipantAllocationParameters): ColibriAllocation {
         logger.info("Allocating for ${participant.id}")
         val stanzaCollector: StanzaCollector
         val session: Colibri2Session
