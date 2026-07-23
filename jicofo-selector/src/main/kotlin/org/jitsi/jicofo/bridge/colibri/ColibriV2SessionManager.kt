@@ -22,6 +22,7 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory
 import com.fasterxml.jackson.databind.node.ObjectNode
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings
 import io.opentelemetry.api.trace.Span
+import io.opentelemetry.api.trace.StatusCode
 import org.jitsi.jicofo.MediaType
 import org.jitsi.jicofo.OctoConfig
 import org.jitsi.jicofo.TaskPools
@@ -506,6 +507,9 @@ class ColibriV2SessionManager(
             span.makeCurrent().use { s ->
                 return doAllocate(participant)
             }
+        } catch (e: Throwable) {
+            span.setStatus(StatusCode.ERROR, e.message ?: "")
+            throw e
         } finally {
             span.end()
         }
@@ -799,6 +803,9 @@ class ColibriV2SessionManager(
             span.makeCurrent().use { s ->
                 return doUpdateParticipant(participantId, transport, sources, initialLastN, suppressLocalBridgeUpdate)
             }
+        } catch (e: Throwable) {
+            span.setStatus(StatusCode.ERROR, e.message ?: "")
+            throw e
         } finally {
             span.end()
         }

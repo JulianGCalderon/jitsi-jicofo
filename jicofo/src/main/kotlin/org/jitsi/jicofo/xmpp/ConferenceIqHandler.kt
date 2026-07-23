@@ -19,6 +19,7 @@ package org.jitsi.jicofo.xmpp
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory
 import com.fasterxml.jackson.databind.node.ObjectNode
+import io.opentelemetry.api.trace.StatusCode
 import io.opentelemetry.api.trace.Tracer
 import org.jitsi.jicofo.FocusManager
 import org.jitsi.jicofo.TaskPools
@@ -37,7 +38,7 @@ import org.jxmpp.jid.DomainBareJid
 import org.jxmpp.jid.EntityBareJid
 import org.jxmpp.jid.impl.JidCreate
 import java.lang.Boolean.parseBoolean
-import java.util.Objects
+import java.util.*
 import org.jitsi.jicofo.visitors.VisitorsConfig.Companion.config as visitorsConfig
 
 /**
@@ -85,6 +86,9 @@ class ConferenceIqHandler(
             span.makeCurrent().use {
                 return doHandleConferenceIq(query)
             }
+        } catch (e: Throwable) {
+            span.setStatus(StatusCode.ERROR, e.message ?: "")
+            throw e
         } finally {
             span.end()
         }

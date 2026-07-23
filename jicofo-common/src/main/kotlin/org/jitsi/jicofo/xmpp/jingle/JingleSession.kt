@@ -20,6 +20,7 @@ package org.jitsi.jicofo.xmpp.jingle
 import com.fasterxml.jackson.databind.node.JsonNodeFactory
 import com.fasterxml.jackson.databind.node.ObjectNode
 import io.opentelemetry.api.trace.Span
+import io.opentelemetry.api.trace.StatusCode
 import io.opentelemetry.api.trace.Tracer
 import io.opentelemetry.context.Context
 import org.jitsi.jicofo.TaskPools
@@ -91,6 +92,9 @@ class JingleSession(
                 span.makeCurrent().use {
                     doProcessIq(iq)
                 }
+            } catch (e: Throwable) {
+                span.setStatus(StatusCode.ERROR, e.message ?: "")
+                throw e
             } finally {
                 span.end()
             }

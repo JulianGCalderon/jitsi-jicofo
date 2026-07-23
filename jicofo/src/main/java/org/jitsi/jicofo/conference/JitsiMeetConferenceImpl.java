@@ -2725,6 +2725,11 @@ public class JitsiMeetConferenceImpl
             {
                 stop();
             }
+            catch (Throwable e)
+            {
+                span.setStatus(StatusCode.ERROR, Objects.toString(e.getMessage(), ""));
+                throw e;
+            }
             finally
             {
                 span.end();
@@ -2753,6 +2758,11 @@ public class JitsiMeetConferenceImpl
                 {
                     onMemberJoined(member);
                 }
+                catch (Throwable e)
+                {
+                    span.setStatus(StatusCode.ERROR, Objects.toString(e.getMessage(), ""));
+                    throw e;
+                }
                 finally
                 {
                     span.end();
@@ -2777,6 +2787,11 @@ public class JitsiMeetConferenceImpl
             try (Scope s = span.makeCurrent())
             {
                 onMemberLeft(member);
+            }
+            catch (Throwable e)
+            {
+                span.setStatus(StatusCode.ERROR, Objects.toString(e.getMessage(), ""));
+                throw e;
             }
             finally
             {

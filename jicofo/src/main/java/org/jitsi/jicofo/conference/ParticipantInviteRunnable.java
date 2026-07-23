@@ -159,6 +159,7 @@ public class ParticipantInviteRunnable implements Runnable, Cancelable
         catch (Throwable e)
         {
             logger.error("Channel allocator failed: ", e);
+            span.setStatus(StatusCode.ERROR, Objects.toString(e.getMessage(), ""));
             cancel();
         }
         finally
