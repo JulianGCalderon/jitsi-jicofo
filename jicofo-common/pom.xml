@@ -126,11 +126,6 @@
       <artifactId>mockk-jvm</artifactId>
       <scope>test</scope>
     </dependency>
-    <dependency>
-      <groupId>io.opentelemetry</groupId>
-      <artifactId>opentelemetry-api</artifactId>
-      <version>${opentelemetry.version}</version>
-    </dependency>
   </dependencies>
   <build>
     <plugins>
